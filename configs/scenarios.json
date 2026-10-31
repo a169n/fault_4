@@ -1,0 +1,62 @@
+[
+  {
+    "name": "baseline",
+    "label": "Baseline (as-is)",
+    "failed_login_alert": null,
+    "lockout_threshold": null,
+    "lockout_window_min": 5,
+    "mfa_required": false,
+    "mfa_bypassed": false,
+    "file_change_alert_per_min": null,
+    "auto_isolation_delay_min": null,
+    "backup_immutable": false,
+    "egress_allowlist": false,
+    "av_tamper_protection": false,
+    "snapshot_interval_min": null
+  },
+  {
+    "name": "hardened",
+    "label": "Hardened",
+    "failed_login_alert": 10,
+    "lockout_threshold": 10,
+    "lockout_window_min": 5,
+    "mfa_required": true,
+    "mfa_bypassed": false,
+    "file_change_alert_per_min": 100,
+    "auto_isolation_delay_min": 2,
+    "backup_immutable": true,
+    "egress_allowlist": true,
+    "av_tamper_protection": true,
+    "snapshot_interval_min": 3
+  },
+  {
+    "name": "hardened_assume_breach",
+    "label": "Assume breach, automated isolation",
+    "failed_login_alert": 10,
+    "lockout_threshold": null,
+    "lockout_window_min": 5,
+    "mfa_required": true,
+    "mfa_bypassed": true,
+    "file_change_alert_per_min": 100,
+    "auto_isolation_delay_min": 2,
+    "backup_immutable": true,
+    "egress_allowlist": true,
+    "av_tamper_protection": true,
+    "snapshot_interval_min": 3
+  },
+  {
+    "name": "hardened_manual_isolation",
+    "label": "Assume breach, manual isolation",
+    "failed_login_alert": 10,
+    "lockout_threshold": null,
+    "lockout_window_min": 5,
+    "mfa_required": true,
+    "mfa_bypassed": true,
+    "file_change_alert_per_min": 100,
+    "auto_isolation_delay_min": 4,
+    "backup_immutable": true,
+    "egress_allowlist": true,
+    "av_tamper_protection": true,
+    "snapshot_interval_min": 3
+  }
+]
