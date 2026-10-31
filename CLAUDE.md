@@ -35,11 +35,11 @@ pages 4–7 are the Student Technical Work Report template.
 ## Commands (macOS)
 
 ```bash
-python3 -m venv .venv
+/usr/bin/python3 -m venv .venv                       # Python 3.9-3.13 (no matplotlib 3.9.4 wheels for 3.14+)
 .venv/bin/pip install -r requirements.txt
 .venv/bin/python -m pytest -q                        # all tests
 PYTHONPATH=src .venv/bin/python -m fault4 analyze    # outputs/results.json + run_log.txt
-PYTHONPATH=src .venv/bin/python -m fault4 all        # + figures + report (once Tasks 9-10 exist)
+PYTHONPATH=src .venv/bin/python -m fault4 all        # + figures + report
 ./run_all.sh                                         # tests + full build + PDF export if LibreOffice is on PATH
 ```
 
@@ -76,12 +76,21 @@ PYTHONPATH=src .venv/bin/python -m fault4 all        # + figures + report (once 
 | 6 Part E anomaly detection | done |
 | 7 Before/after simulation | done |
 | 8 Pipeline, CLI, run log | done |
-| 9 Figures | pending |
-| 10 Report (.docx) | pending |
-| 11 run_all.sh, README, Python 3.9 check, PDF render check | pending |
-| Final whole-branch review | pending |
+| 9 Figures | done |
+| 10 Report (.docx) | done |
+| 11 run_all.sh, README, Python 3.9 check, PDF render check | done |
+| Final whole-branch review + fix pass | done (Figure 1 redrawn and described, hypervisor and backup tiers added) |
+
+All plan tasks are finished. Further work is optional polish; see "Deferred" below.
 
 `git log --oneline` shows the finished tasks (one `feat:` commit per task).
+
+## Deferred (minor, not required for submission)
+
+- Report wording branches on rto_met/rpo_met only implicitly (what-if runs with other intervals need wording review).
+- run_all.sh converts report/Assignment4_Talgatov_Aibyn.docx to PDF even if --report-dir points elsewhere.
+- CSV loaders do not accept an Excel UTF-8 BOM; no .gitattributes for line endings; shallow clones give a short
+  work period; the page size is US Letter (python-docx default) rather than A4.
 
 ## Resume prompt (paste into Claude Code locally if the cloud session ran out)
 

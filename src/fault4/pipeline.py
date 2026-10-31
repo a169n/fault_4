@@ -120,7 +120,7 @@ def run_analysis(data_dir: Path = DATA_DIR, config_dir: Path = CONFIG_DIR) -> Di
     }
 
     simulation = [
-        asdict(simulate(events, scenario, check["recovery_time_sequential"]))
+        asdict(simulate(events, scenario, check["recovery_time_sequential"], planned_isolation_min=finish[2]))
         for scenario in load_scenarios(scenarios_path)
     ]
 
@@ -141,15 +141,23 @@ def run_analysis(data_dir: Path = DATA_DIR, config_dir: Path = CONFIG_DIR) -> Di
     }
 
 
+# Files whose changes alter the analysis; regenerated outputs/ and report/ do not make a build "dirty".
+ANALYSIS_INPUTS = ("src", "tests", "data", "configs", "docs/assignment", "requirements.txt", "pyproject.toml",
+                   "run_all.sh")
+
+
 def git_commit(repo_root: Path = REPO_ROOT) -> Optional[str]:
+    """Short HEAD hash, with "-dirty" only when an analysis input has uncommitted changes."""
+    def git(*args: str) -> str:
+        return subprocess.run(["git", *args], cwd=str(repo_root), capture_output=True, text=True,
+                              check=True).stdout.strip()
+
     try:
-        out = subprocess.run(
-            ["git", "describe", "--always", "--dirty", "--abbrev=7"],
-            cwd=str(repo_root), capture_output=True, text=True, check=True,
-        )
+        head = git("rev-parse", "--short=7", "HEAD")
+        changed = git("status", "--porcelain", "--", *ANALYSIS_INPUTS)
     except (OSError, subprocess.CalledProcessError):
         return None
-    return out.stdout.strip() or None
+    return f"{head}-dirty" if changed else head
 
 
 def _fmt_optional(value: Any, none_text: str) -> str:

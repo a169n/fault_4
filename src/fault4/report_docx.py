@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
@@ -35,9 +36,16 @@ def _cell_text(cell, text: str, bold: bool = False, size: float = 9) -> None:
     run.font.size = Pt(size)
 
 
+def _row_flag(row, tag: str) -> None:
+    flag = OxmlElement(tag)
+    flag.set(qn("w:val"), "true")
+    row._tr.get_or_add_trPr().append(flag)
+
+
 def _table(doc, header: Sequence[str], rows: Sequence[Sequence[str]], widths: Optional[Sequence[float]] = None):
     table = doc.add_table(rows=1, cols=len(header))
     table.style = "Table Grid"
+    _row_flag(table.rows[0], "w:tblHeader")  # repeat the header row after a page break
     for cell, text in zip(table.rows[0].cells, header):
         _cell_text(cell, text, bold=True)
         _shade(cell, HEADER_FILL)
@@ -45,6 +53,8 @@ def _table(doc, header: Sequence[str], rows: Sequence[Sequence[str]], widths: Op
         cells = table.add_row().cells
         for cell, text in zip(cells, row):
             _cell_text(cell, str(text))
+    for row in table.rows:
+        _row_flag(row, "w:cantSplit")  # keep each row on one page
     if widths:
         # Word reads cell widths, LibreOffice reads the table grid: set both.
         table.autofit = False
@@ -201,11 +211,18 @@ def build_report(
            (1.0, 1.9, 1.8, 1.8))
     _para(doc, "Component inventory and the defence of each role:", bold=True)
     _table(doc, ("Required component", "Implementation", "Zone", "Role", "Why this role"), [
-        (c["satisfies"], f"{c['name']}: {c['technology']}", c["zone"], c["role"], c["why"])
+        (rc.SATISFIES_LABEL.get(c["satisfies"], c["satisfies"]), f"{c['name']}: {c['technology']}", c["zone"],
+         c["role"], c["why"])
         for c in results["controls"]["components"]
     ], (1.0, 2.2, 0.9, 0.8, 1.6))
+    _para(doc, rc.ROLE_NOTE)
     _figure(doc, figs, "architecture.png")
-    _para(doc, "Control flow (numbers as in Figure 1):", bold=True)
+    doc.add_heading("How to read Figure 1", level=2)
+    _para(doc, rc.FIGURE1_INTRO)
+    _para(doc, "Zones, from left to right:", bold=True)
+    for zone, text in rc.FIGURE1_ZONES:
+        _labelled(doc, f"{zone}: ", text, style="List Bullet")
+    _para(doc, "Control flow:", bold=True)
     for i, (title, text) in enumerate(rc.ARCHITECTURE_FLOW, start=1):
         _labelled(doc, f"({i}) {title}: ", text, style="List Bullet")
 
@@ -218,14 +235,16 @@ def build_report(
     check = results["recovery"]["check"]
     points = results["recovery"]["clean_points"]
     _labelled(doc, "RTO. ", f"Sequential estimate {check['recovery_time_sequential']} min, critical path "
-                             f"{check['recovery_time_critical_path']} min (steps 3 and 4 in parallel), both ≤ RTO "
+                             f"{check['recovery_time_critical_path']} min (steps 1→2→4→5→6→7; evidence preservation runs "
+                             "alongside steps 4–5 because restoring onto RS-02 does not touch RS-01), both ≤ RTO "
                              f"{check['rto_target']} min; slack {check['slack_min']} min.")
     _labelled(doc, "RPO. ", f"Snapshots every {results['recovery']['snapshot_interval_min']} min (aligned to 09:00) + "
                              f"{results['recovery']['replication_lag_min']} min replication lag = "
                              f"{check['worst_case_data_loss']} min worst-case data loss ≤ RPO {check['rpo_target']} min. "
-                             f"Clean-point rule: {points['preferred']} (last snapshot before the first malicious change "
-                             f"at 09:07) if the clean-room check passes, otherwise {points['fallback']} (before attacker "
-                             "access at 09:04): 1 or 4 min of data loss.")
+                             f"Clean-point rule, decided in step 4 before the restore: {points['preferred']} (last "
+                             "snapshot before the first malicious change at 09:07) if its diff against "
+                             f"{points['fallback']} is clean, otherwise {points['fallback']} (before attacker access at "
+                             "09:04): 1 or 4 min of data loss. The fallback's loss grows with the attacker's dwell time.")
     for s in results["recovery"]["steps"]:
         _labelled(doc, f"Step {s['number']}. ", s["details"], style="List Bullet")
     _figure(doc, figs, "recovery_timeline.png")
@@ -240,6 +259,7 @@ def build_report(
     for i, (question, answer) in enumerate(zip(rc.PART_E_QUESTIONS, rc.part_e_answers(results)), start=1):
         _labelled(doc, f"{i}. {question} ", answer)
     _figure(doc, figs, "anomaly_scores.png")
+    _para(doc, "Threshold sensitivity: number of signals flagged at each threshold.", bold=True)
     _table(doc, ("Threshold", "Signals flagged"),
            [(f"{d['threshold']:.2f}", d["count"]) for d in results["anomaly"]["threshold_sensitivity"]], (1.2, 1.4))
 
@@ -329,6 +349,13 @@ def build_report(
     for command in rc.reproduce_commands():
         _para(doc, command, size=9, style="List Bullet")
     _table(doc, ("File", "SHA-256"), sorted(results["data_sources"].items()), (2.6, 3.9))
+
+    props = doc.core_properties
+    props.author = props.last_modified_by = student["name"]
+    props.title = rc.TITLE
+    props.subject = rc.SUBTITLE
+    props.comments = ""
+    props.created = props.modified = datetime.now(timezone.utc).replace(tzinfo=None)
 
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)

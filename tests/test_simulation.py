@@ -47,10 +47,12 @@ def test_assume_breach_contains_at_0909():
     assert {e.time: e.status for e in r.timeline}["09:08"] == "executed"
 
 
-def test_manual_isolation_loses_files_but_still_recovers():
+def test_manual_isolation_loses_files_and_recovers_later():
+    # Part D assumes isolation by T+2 (09:09); isolating at 09:11 shifts the whole plan by 2 minutes.
     r = run("hardened_manual_isolation")
     assert (r.stopped_at, r.files_impacted, r.backup_destroyed, r.data_loss_min, r.recovery_time_min) == (
-        "09:11", 1200, False, 1, 24)
+        "09:11", 1200, False, 1, 26)
+    assert r.stopped_by == "isolation 4 min after the FIM rate + entropy alert"
 
 
 def test_assume_breach_names_independent_layers():

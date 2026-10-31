@@ -1,4 +1,4 @@
-"""All report text. Numbers are taken from the results dict, never typed in by hand."""
+"""All report text. Key numbers are taken from the results dict; the prose explains them."""
 
 from __future__ import annotations
 
@@ -145,18 +145,57 @@ ATTACHED_FILES = (
 
 # Numbered control flow shown in Figure 1 and walked through in Part C.
 ARCHITECTURE_FLOW = (
-    ("Access", "users reach RS-01 only through the SSH bastion with MFA; the guessed password used at 09:04 "
-               "would be rejected."),
-    ("Backup", "the vault pulls RS-01 snapshots every 3 min and the DB WAL continuously; production cannot "
-               "delete them (09:12 attempt fails)."),
-    ("Detection", "logs, FIM and canary-file events go to the SIEM, IDS and AI scorer (alerts at 09:01 and 09:07)."),
-    ("Response", "the SIEM tells the firewall to move RS-01 into the quarantine VLAN and pauses the VM "
-                 "(isolated by 09:09)."),
-    ("Egress control", "connections to unknown IPs are denied at the firewall (the 09:13 channel fails)."),
-    ("Restore", "data from the last clean snapshot is restored and verified in the isolated clean room, "
-                "then RS-02 is promoted (24 min)."),
-    ("Last-resort copy", "a daily transfer window copies the vault to the offline site in Almaty (24 h tier)."),
+    ("Access", "attacker host → boundary → SSH bastion. SSH reaches only the bastion, where MFA rejects the guessed "
+               "password (red ✕, the 09:04 login); authorised users continue from the bastion to RS-01."),
+    ("Backup", "RS-01 and the database → vault. The vault initiates the pulls (snapshots every 3 min, WAL "
+               "continuously), so RS-01 holds no credential the 09:12 deletion attempt could use."),
+    ("Telemetry", "bastion → SIEM and RS-01 (FIM, canary files) → IDS → SIEM. The failed logins raise the 09:01 alert "
+                  "and the mass file change raises the 09:07 alert."),
+    ("Response", "SIEM → enforcement points. Wazuh active response asks the hypervisor to pause RS-01 and re-tag its "
+                 "vNIC into the quarantine VLAN, and OPNsense applies a deny rule (isolated by 09:09)."),
+    ("Egress control", "RS-01 → Internet. The connection to the unknown IP is denied at the boundary (red ✕, the 09:13 "
+                       "channel fails)."),
+    ("Restore", "vault → clean room → RS-02. Data from the clean point is restored and verified in the isolated clean "
+                "room, then RS-02 is promoted into the research VLAN (24 min estimate, 20 min on the critical path)."),
+    ("Last-resort copy", "vault → Almaty. A daily transfer window copies the vault to the offline site (24 h tier)."),
 )
+
+FIGURE1_INTRO = (
+    "Figure 1 reads from left to right: the networks outside the perimeter, the segmentation boundary (blue bar), the "
+    "production zones, the protection and recovery zones, and the second site. Box colour shows the control role: blue = "
+    "preventive, orange = detective, green = recovery, grey = protected asset or external system. Lines: solid = access "
+    "or data path (the arrowhead shows the direction of data), dotted = telemetry, orange = automated response, dashed "
+    "= scheduled offline transfer, red ✕ = path blocked by a control. Numbers (1)–(7) mark the control flow."
+)
+FIGURE1_ZONES = (
+    ("User VLAN 10.20.4.0/24", "the campus network the attack came from (attacker host 10.20.4.15); it has no direct "
+                               "route to the research servers."),
+    ("Internet", "the destination of the 09:13 outbound connection, reachable only through the egress allow-list."),
+    ("Segmentation boundary", "OPNsense firewall and VLAN switching: default-deny between zones, egress allow-list, "
+                              "quarantine VLAN. Every arrow crossing it is an explicitly allowed or blocked path."),
+    ("Access zone", "the SSH bastion and VPN with MFA, the only way into the research zone, and privileged access "
+                    "management (just-in-time sudo, tamper protection)."),
+    ("Research zone", "RS-01 with its canary files and FIM agent, running as a VM on the hypervisor that performs "
+                      "containment."),
+    ("Data zone", "the PostgreSQL research database, whose WAL the vault pulls continuously."),
+    ("Security zone", "the IDS (Suricata, FIM and canary rules, AI anomaly scorer) feeding the SIEM (Wazuh, "
+                      "Prometheus/Grafana), which correlates alerts and triggers the automated response."),
+    ("Backup vault", "pull-only: tier 1 holds ZFS snapshots of RS-01 every 3 min (zfs hold), tier 2 restic copies every "
+                     "15 min under Object Lock; production holds no vault credentials."),
+    ("Recovery zone", "an isolated VLAN without internet: the clean room where restored data is scanned and verified, "
+                      "and the RS-02 warm standby, promoted into the research VLAN only after verification."),
+    ("Second site (Almaty)", "the offline copy, refreshed in a daily transfer window opened from the Almaty side."),
+)
+ROLE_NOTE = (
+    "A role is relative to the threat: Object Lock is preventive against backup deletion, while the backup as a whole "
+    "is a recovery control against ransomware. Monitoring detects and orchestrates; the enforcement points "
+    "(hypervisor, firewall, identity provider) carry out the response, which the template's three columns list under "
+    "recovery as “Respond:”."
+)
+SATISFIES_LABEL = {
+    "supporting": "Supporting (not one of the 7 required)",
+    "Additional": "Additional (Part E Q4, section 6)",
+}
 
 FIGURE_CAPTIONS = {
     "architecture.png": "Figure 1. Resilient architecture and its numbered control flow (1)–(7).",
@@ -253,8 +292,8 @@ def section_texts(results: Dict[str, Any]) -> Dict[str, Dict[str, str]]:
             "decision": (
                 "09:15 is classed as lateral movement rather than exfiltration: the spike shows the compromised server "
                 "used as a pivot into the research database, which I assume runs on a separate host. 09:04 is raised "
-                f"from High to Critical because every later event depends on that login. {m['stage_categories_used']} of "
-                "8 categories are used, but 09:01 and 09:15 are interpretive and their alternative readings are stated."
+                "from High to Critical because every later event depends on that login. Four classifications are "
+                "interpretive (09:01, 09:08, 09:15, 09:18); each states its alternative reading in the Part A table."
             ),
         },
         "risk": {
@@ -287,17 +326,18 @@ def section_texts(results: Dict[str, Any]) -> Dict[str, Dict[str, str]]:
             ),
             "decision": (
                 "Failover is snapshot-based, not live replication: live replication would have copied the 1,200 "
-                "encrypted files to the standby. Segmentation is preventive by design; its quarantine VLAN is reused for "
-                "containment, which is why containment actions are marked “Respond:” in the recovery column."
+                "encrypted files to the standby. RS-02 waits in the isolated recovery VLAN, out of the attacker's reach, "
+                "and is moved into the research VLAN only after verification. Containment is done by the hypervisor "
+                "(quarantine VLAN), not the firewall, and is marked “Respond:” in the recovery column."
             ),
         },
         "recovery": {
             "summary": (
                 f"Seven steps timed from the first malicious change (T = 09:07): {_durations(results)} = "
-                f"{check['recovery_time_sequential']} min sequentially, {check['recovery_time_critical_path']} min when "
-                f"evidence preservation and backup activation run in parallel; both meet the {check['rto_target']}-minute "
-                f"RTO. Worst-case data loss is {interval} + {lag} = {check['worst_case_data_loss']} min, within the "
-                f"{check['rpo_target']}-minute RPO."
+                f"{check['recovery_time_sequential']} min sequentially, {check['recovery_time_critical_path']} min on the "
+                "critical path 1→2→4→5→6→7 (evidence preservation runs alongside steps 4–5, because restoring onto RS-02 "
+                f"does not touch RS-01); both meet the {check['rto_target']}-minute RTO. Worst-case data loss is "
+                f"{interval} + {lag} = {check['worst_case_data_loss']} min, within the {check['rpo_target']}-minute RPO."
             ),
             "evidence": (
                 f"Part D table; src/fault4/recovery.py (recovery_check); Figure 2. Snapshots every {interval} min aligned "
@@ -306,8 +346,9 @@ def section_texts(results: Dict[str, Any]) -> Dict[str, Dict[str, str]]:
             ),
             "decision": (
                 f"I chose a {interval}-minute interval because 5 + {lag} = 6 minutes of loss would breach the RPO once "
-                f"the replication lag is counted. The fallback clean point exists because the attacker was present from "
-                f"09:04, so {points['preferred']} is trusted only after the clean-room check."
+                "the replication lag is counted. The clean point is chosen in step 4, before the restore: the attacker "
+                f"was present from 09:04, so {points['preferred']} is used only if its diff against {points['fallback']} "
+                "is clean. Deciding first keeps both choices inside the RTO."
             ),
         },
         "ai": {
@@ -335,10 +376,10 @@ def section_texts(results: Dict[str, Any]) -> Dict[str, Dict[str, str]]:
                 "disconnected media and a monthly restore drill."
             ),
             "evidence": (
-                f"Tier comparison: the Object Lock vault gives {check['worst_case_data_loss']} min worst-case loss but "
-                "shares the Astana site and admin domain; the Almaty copy (~970 km away) is a 24 h tier that survives "
-                "compromise of the vault's admin plane or loss of the site. Modelled as offline_copy in "
-                "src/fault4/controls.py and flow (7) in Figure 1."
+                f"Tier comparison: vault tier 1 (ZFS, {check['worst_case_data_loss']} min worst-case loss) and tier 2 "
+                "(Object Lock, 15 min) share the Astana site and the vault's admin domain; the Almaty copy (~970 km "
+                "away) is a 24 h tier that survives compromise of the vault's admin plane or loss of the site. Modelled "
+                "as offline_copy in src/fault4/controls.py and flow (7) in Figure 1."
             ),
             "decision": (
                 "An in-country second site instead of a foreign cloud: Law of the Republic of Kazakhstan No. 94-V "
@@ -359,17 +400,20 @@ def individual_record(results: Dict[str, Any], commit: Optional[str]) -> List[Tu
         (SECTION4_ROWS[0],
          f"{results['recovery']['snapshot_interval_min']}-minute immutable snapshots chosen by counting the "
          f"{results['recovery']['replication_lag_min']}-minute replication lag (3 + 1 = 4 ≤ 5, while 5 + 1 = 6 would "
-         "breach the RPO), a two-clean-point rule (09:06 if the clean-room check passes, otherwise 09:03 before "
-         "attacker access), and snapshot-based instead of live-replicated failover."),
+         "breach the RPO), a two-clean-point rule decided before the restore (09:06 if its diff against 09:03 is "
+         "clean, otherwise 09:03, before attacker access), and a standby kept in the isolated recovery VLAN instead of "
+         "a live replica."),
         (SECTION4_ROWS[1],
          "Python package fault4 with an automated pytest suite (outputs/test_log.txt). Four-scenario replay: the "
          "baseline loses 1,200 files and the backups; the hardened design stops the attack at 09:01; with the access "
          f"layer bypassed, automated isolation limits damage to 320 files ({reduction_percent(results)} fewer); manual "
-         f"isolation loses 1,200 files but still recovers. Estimated recovery time {check['recovery_time_sequential']} "
+         "isolation loses 1,200 files but still recovers, 2 min later. Estimated recovery time "
+         f"{check['recovery_time_sequential']} "
          f"min (critical path {check['recovery_time_critical_path']} min), worst-case data loss "
          f"{check['worst_case_data_loss']} min."),
         (SECTION4_ROWS[2],
-         f"{STUDENT['repository']}, commit {commit or 'see git log'}; fault4 v{results['tool_version']}. Dataset "
+         f"{STUDENT['repository']}: code at commit {commit or 'see git log'} (outputs and this report are committed "
+         f"in the next commit on main); fault4 v{results['tool_version']}. Dataset "
          f"transcribed from {pdf_name} (SHA-256 {sources[pdf_name][:16]}…): incident table p.1, Part E table p.2, into "
          f"data/incident_events.csv (SHA-256 {sources['incident_events.csv'][:16]}…) and data/anomaly_scores.csv "
          f"(SHA-256 {sources['anomaly_scores.csv'][:16]}…). Outputs: outputs/results.json, outputs/run_log.txt."),
@@ -380,7 +424,9 @@ def individual_record(results: Dict[str, Any], commit: Optional[str]) -> List[Tu
         (SECTION4_ROWS[4],
          "One synthetic incident replayed deterministically by a non-adaptive attacker; the FIM threshold "
          "(100 changes/min) was chosen knowing this incident, so it may overfit; no false-positive rate was measured; "
-         "recovery-step durations are estimates, not measured drills."),
+         "recovery-step durations are estimates, not measured drills; the 4-min data-loss bound holds for the "
+         "preferred clean point, while the fallback's loss grows with the attacker's dwell time before the first "
+         "malicious change (here 3 min)."),
     ]
 
 
@@ -408,8 +454,9 @@ def conclusion(results: Dict[str, Any]) -> str:
     return (
         f"The synthetic incident went from first contact to disabled antivirus in {m['attack_duration_minutes']} minutes "
         "with no automated response, encrypting 1,200 files and attacking the backups. The proposed architecture answers "
-        "each stage with a preventive, a detective and a recovery control. In the replay, lockout and MFA stop the attack "
-        f"at 09:01; if the access layer is bypassed, automated isolation at {breach['stopped_at']} limits the damage to "
+        "each stage with a preventive, a detective and a recovery control. In the replay, the lockout's source block "
+        "stops the attack at 09:01 (MFA would also reject the 09:04 login); if the access layer is bypassed, automated "
+        f"isolation at {breach['stopped_at']} limits the damage to "
         f"{breach['files_impacted']} files ({reduction_percent(results)} fewer), immutable backups survive the 09:12 "
         "deletion attempt and egress filtering blocks the 09:13 channel. Recovery is estimated at "
         f"{check['recovery_time_sequential']} min ({check['recovery_time_critical_path']} min on the critical path) "
@@ -429,7 +476,8 @@ def simulation_assumptions() -> List[str]:
         "The 320 modified files are part of the 1,200 encrypted ones (files impacted = maximum, not sum).",
         "In the baseline, the deletion attempt on mutable backups succeeds.",
         "Assume-breach scenarios disable every access-zone control (lockout, MFA via a stolen session token, response "
-        "to the 09:01 alert) to test whether detection plus immutable recovery alone bound the damage.",
+        "to the 09:01 alert) to test whether detection plus immutable recovery alone bound the damage. Part D assumes "
+        "isolation by T+2; manual isolation at T+4 delays the whole recovery by 2 minutes.",
         "In the hardened scenario a low-and-slow guesser (≤9 tries per 5 min) would evade lockout; MFA, not lockout, is "
         "the control that robustly stops the 09:04 login.",
     ]
@@ -443,7 +491,8 @@ def references(results: Dict[str, Any]) -> List[str]:
         "T1486, T1490, T1041, T1213, T1562.001, TA0008 (accessed 31 October 2026).",
         "Law of the Republic of Kazakhstan No. 94-V of 21 May 2013 “On Personal Data and Their Protection”, Article 12, "
         "https://adilet.zan.kz/eng/docs/Z1300000094 (accessed 31 October 2026).",
-        "NIST Special Publication 800-61, Computer Security Incident Handling Guide.",
+        "NIST SP 800-61 Rev. 3 (April 2025), Incident Response Recommendations and Considerations for Cybersecurity "
+        "Risk Management, https://doi.org/10.6028/NIST.SP.800-61r3 (basis for separating Respond from Recover).",
         "Vendor documentation: privacyIDEA, OPNsense, Wazuh, Suricata, MinIO Object Lock, OpenZFS send/receive, "
         "PostgreSQL continuous archiving and point-in-time recovery, fapolicyd.",
         f"Assignment specification: {pdf_name} (SHA-256 {sources[pdf_name]}).",

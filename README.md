@@ -16,17 +16,18 @@ evaluates recovery. Everything in the report is computed by code, so it can be r
 ## Quick start (macOS)
 
 ```bash
-python3 -m venv .venv
+/usr/bin/python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 ./run_all.sh
 ```
+
+Use the macOS system Python (`/usr/bin/python3`, 3.9) or any Python 3.9–3.13. Avoid 3.14+: matplotlib 3.9.4 has no
+wheels for it, so pip would try to compile it from source.
 
 `run_all.sh` does the following:
 1. Runs the tests and writes `outputs/test_log.txt`.
 2. Runs the analysis, figures and report steps.
 3. Exports the PDF if LibreOffice is installed. Otherwise, open the .docx in Word or Pages and choose *Export as PDF*.
-
-It works with the macOS system Python 3.9 or newer.
 
 Single steps:
 
@@ -64,7 +65,8 @@ PYTHONPATH=src .venv/bin/python -m fault4 report --submission-date 2026-11-07
 5. Privilege escalation 4×4 = 16
 
 **Recovery**
-- Estimated recovery time: 24 min sequential, 20 min on the critical path. Both meet the 30-minute RTO.
+- Estimated recovery time: 24 min sequential, 20 min on the critical path (1→2→4→5→6→7; step 3 runs alongside
+  steps 4–5). Both meet the 30-minute RTO.
 - Worst-case data loss: 3 + 1 = 4 min, within the 5-minute RPO.
 
 **AI detection**
@@ -76,7 +78,7 @@ PYTHONPATH=src .venv/bin/python -m fault4 report --submission-date 2026-11-07
 | Baseline (as-is) | yes | never | 1,200 | yes | unbounded | not achievable |
 | Hardened | no | 09:01 | 0 | no | none | no recovery needed |
 | Assume breach, automated isolation | yes | 09:09 | 320 (−73.3%) | no | 1 min (fallback 4) | 24 min |
-| Assume breach, manual isolation | yes | 09:11 | 1,200 | no | 1 min (fallback 4) | 24 min |
+| Assume breach, manual isolation | yes | 09:11 | 1,200 | no | 1 min (fallback 4) | 26 min |
 
 ## Data provenance (SHA-256)
 
@@ -96,15 +98,17 @@ PYTHONPATH=src .venv/bin/python -m fault4 report --submission-date 2026-11-07
 | MFA (privacyIDEA, FIDO2) | preventive | A guessed password does not become a session; it would have blocked the 09:04 login. |
 | Segmentation (OPNsense) | preventive | By design, 10.20.4.15 reaches RS-01 only through the bastion, and unknown egress (09:13) is denied. Its quarantine VLAN is reused for containment. |
 | PAM (just-in-time sudo) | preventive | Backup deletion (09:12) and AV disable (09:18) need a just-in-time approval the attacker does not have. |
-| Monitoring (Wazuh, Prometheus) | detective | Raises the 09:01 and 09:07 alerts and triggers responses, but blocks nothing itself. |
+| Monitoring (Wazuh, Prometheus) | detective | Raises the 09:01 and 09:07 alerts and orchestrates the response; the hypervisor, firewall and identity provider enforce it. |
 | IDS (Suricata, FIM, canary, AI) | detective | Detects the encryption (09:07) and the unknown outbound connection (09:13). |
-| Immutable backup (Object Lock) | recovery | Does not stop encryption; guarantees an untouchable clean restore point. |
-| RS-02 warm standby | recovery | Restores service on clean infrastructure and never receives live-replicated, already-encrypted data. |
+| Immutable backup (vault) | recovery | Does not stop encryption; keeps clean restore points out of the attacker's reach. Tier 1: ZFS pull every 3 min, protected by credential separation and zfs hold (4 min data loss). Tier 2: restic every 15 min under Object Lock (write-once even for a vault admin). |
+| Hypervisor | recovery (respond) | Containment point: pauses RS-01 and re-tags its vNIC into the quarantine VLAN; also takes the evidence snapshot. A firewall cannot move a host into a VLAN. |
+| RS-02 warm standby | recovery | Waits in the isolated recovery VLAN, out of the attacker's reach; promoted into the research VLAN only after verification. Never receives live-replicated, already-encrypted data. |
 | Clean-room recovery environment | recovery | Restored data is verified in isolation before going back to production. |
 | Offline copy in Almaty | recovery | Last resort if the vault's admin plane or the Astana site is lost. |
 
 The template has no "Respond" column, so containment actions sit in the Recovery column, marked `Respond:`. Restoration
-actions are marked `Recover:`.
+actions are marked `Recover:`. A role is relative to the threat: Object Lock is preventive against backup deletion,
+while the backup as a whole is a recovery control against ransomware.
 
 **Contested classifications**
 
@@ -117,7 +121,8 @@ actions are marked `Recover:`.
 
 **Numbers to remember**
 - 3-min snapshots + 1-min lag = 4 min of data loss; 5 + 1 = 6 would breach the RPO.
-- Clean points: 09:06 (verified) or 09:03 (before attacker access).
+- Clean points: 09:06 if its diff against 09:03 is clean, otherwise 09:03 (before attacker access). The choice is
+  made in step 4, before the restore, so both stay inside the RTO.
 - Recovery steps: 1+1+4+3+8+5+2 = 24 min.
 
 ## Before submission (student)

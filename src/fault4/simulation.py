@@ -99,7 +99,8 @@ def _independent_layers(e: Event, sc: Scenario) -> List[str]:
     """Controls that would have stopped this post-compromise event even without isolation."""
     layers = []
     if e.kind == "backup_deletion" and sc.backup_immutable:
-        layers.append("object lock (immutable backup)")
+        layers.append("vault credential separation (RS-01 holds no vault credentials; copies under zfs hold / "
+                      "object lock)")
     if e.kind == "outbound_unknown" and sc.egress_allowlist:
         layers.append("egress allow-list")
     if e.kind == "av_disabled" and sc.av_tamper_protection:
@@ -107,7 +108,10 @@ def _independent_layers(e: Event, sc: Scenario) -> List[str]:
     return layers
 
 
-def simulate(events: Sequence[Event], scenario: Scenario, recovery_time_min: int) -> SimulationResult:
+def simulate(events: Sequence[Event], scenario: Scenario, recovery_time_min: int,
+             planned_isolation_min: int = 2) -> SimulationResult:
+    """recovery_time_min assumes isolation within planned_isolation_min of the first malicious change
+    (Part D steps 1-2); later isolation shifts the whole recovery plan by the difference."""
     sc = scenario
     ordered = sorted(events, key=lambda e: e.minute)
     login_event = next((e for e in ordered if e.kind == "login_success"), None)
@@ -179,7 +183,9 @@ def simulate(events: Sequence[Event], scenario: Scenario, recovery_time_min: int
                 notes.append(f"FIM rate + entropy alert: {int(e.value):,} changes/min ≥ {sc.file_change_alert_per_min}")
                 if sc.auto_isolation_delay_min is not None and isolation_minute is None:
                     isolation_minute = e.minute + sc.auto_isolation_delay_min
-                    stopped_at, stopped_by = fmt_minute(isolation_minute), ISOLATION_STOPPED_BY
+                    stopped_at = fmt_minute(isolation_minute)
+                    stopped_by = (ISOLATION_STOPPED_BY if sc.auto_isolation_delay_min <= planned_isolation_min
+                                  else f"isolation {sc.auto_isolation_delay_min} min after the FIM rate + entropy alert")
                     notes.append(f"isolation completes at {stopped_at}")
             # Effects of events that happened (executed or detected).
             if e.kind in ("files_modified", "files_encrypted"):
@@ -189,7 +195,8 @@ def simulate(events: Sequence[Event], scenario: Scenario, recovery_time_min: int
             elif e.kind == "backup_deletion":
                 if sc.backup_immutable:
                     status = "blocked"
-                    notes.append("deletion rejected by object lock (immutable backup)")
+                    notes.append("deletion fails: RS-01 holds no vault credentials; vault copies are under zfs hold "
+                                 "and object lock")
                 else:
                     backup_destroyed = True
                     notes.append("mutable backups deleted")
@@ -219,7 +226,8 @@ def simulate(events: Sequence[Event], scenario: Scenario, recovery_time_min: int
         points = clean_restore_points(first_malicious, access_minute, sc.snapshot_interval_min)
         data_loss = first_malicious - points["preferred"]
         data_loss_fallback = first_malicious - points["fallback"]
-        recovery_time = recovery_time_min
+        late = isolation_minute - (first_malicious + planned_isolation_min) if isolation_minute is not None else 0
+        recovery_time = recovery_time_min + max(0, late)
 
     return SimulationResult(
         scenario=sc.name,

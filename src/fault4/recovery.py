@@ -32,11 +32,11 @@ RECOVERY_STEPS: Tuple[RecoveryStep, ...] = (
     ),
     RecoveryStep(
         2, "Isolate affected system",
-        "segmentation (quarantine VLAN) + hypervisor (VM pause) + privacyIDEA/IdP (account lock), triggered by "
-        "Wazuh active response",
+        "hypervisor (VM pause, vNIC into the quarantine VLAN) + segmentation (OPNsense deny rule) + "
+        "privacyIDEA/IdP (account lock), triggered by Wazuh active response",
         1, (1,),
-        "Automated: move RS-01 to the quarantine VLAN, pause the VM (memory preserved), lock the compromised account "
-        "and block 10.20.4.15.",
+        "Automated: the hypervisor pauses RS-01 (memory preserved) and re-tags its vNIC into the quarantine VLAN, "
+        "OPNsense blocks 10.20.4.15 and RS-01's address, and privacyIDEA locks the compromised account.",
     ),
     RecoveryStep(
         3, "Preserve evidence",
@@ -49,8 +49,9 @@ RECOVERY_STEPS: Tuple[RecoveryStep, ...] = (
         4, "Activate backup",
         "immutable_backup (choose the clean point, clone it read-only from the vault ZFS pool into the clean room)",
         3, (2,),
-        "Choose the clean point (09:06 if the clean-room check passes, otherwise 09:03, before attacker access) "
-        "and clone it read-only into the recovery environment.",
+        "Choose the clean point before restoring: diff the 09:06 snapshot against 09:03 (new executables, "
+        "authorized_keys or cron entries, changed canaries). Use 09:06 if the diff is clean, otherwise 09:03 (before "
+        "attacker access), and clone it read-only into the recovery environment.",
     ),
     RecoveryStep(
         5, "Restore services",
@@ -69,10 +70,11 @@ RECOVERY_STEPS: Tuple[RecoveryStep, ...] = (
     ),
     RecoveryStep(
         7, "Return to production",
-        "failover + segmentation (VIP/DNS switch, rotated credentials, heightened monitoring)",
+        "failover + hypervisor (RS-02 vNIC into the research VLAN, VIP/DNS switch, rotated credentials)",
         2, (3, 6),
-        "Switch the service VIP/DNS to RS-02 with rotated credentials and heightened monitoring; only after the "
-        "evidence is preserved and integrity is verified.",
+        "Promote RS-02: re-tag its vNIC from the recovery VLAN into the research VLAN, switch the service VIP/DNS, "
+        "rotate credentials and keep heightened monitoring; only after the evidence is preserved and integrity is "
+        "verified.",
     ),
 )
 

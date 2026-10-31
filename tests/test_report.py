@@ -43,7 +43,7 @@ def test_assignment_tables_present(doc):
     assert h[("Threat", "Likelihood", "Impact", "Risk Score", "Priority")] == 6
     assert h[("Threat", "Likelihood rationale", "Impact rationale", "Sensitivity (L-1 / L / L+1)")] == 6
     assert h[("Threat", "Preventive control", "Detection control", "Recovery control")] == 6
-    assert h[("Required component", "Implementation", "Zone", "Role", "Why this role")] == 10
+    assert h[("Required component", "Implementation", "Zone", "Role", "Why this role")] == 11
     assert h[("Step", "Action", "Responsible component", "Target time")] == 8
     assert h[("Event", "Normal score", "Observed score", "Delta", "Anomaly (score ≥ 0.75)")] == 6
 
@@ -74,3 +74,27 @@ def test_report_images_fit_page(doc):
     s = doc.sections[0]
     text_w = s.page_width - s.left_margin - s.right_margin
     assert len(doc.inline_shapes) == 5 and all(sh.width <= text_w for sh in doc.inline_shapes)
+
+
+def test_figure1_is_described_zone_by_zone(doc):
+    t = full_text(doc)
+    assert "How to read Figure 1" in t
+    for zone in ("User VLAN", "Internet", "Access zone", "Research zone", "Data zone", "Security zone",
+                 "Backup vault", "Recovery zone", "Second site"):
+        assert zone in t, zone
+    assert "Supporting (not one of the 7 required)" in t and "supporting" not in [
+        c.text for tb in doc.tables for r in tb.rows for c in r.cells]
+
+
+def test_document_properties_name_the_student(doc):
+    props = doc.core_properties
+    assert props.author == "Talgatov Aibyn" and props.title.startswith("Assignment 4") and "python-docx" not in (
+        props.comments or "")
+
+
+def test_table_headers_repeat_and_rows_do_not_split(doc):
+    from docx.oxml.ns import qn
+
+    for table in doc.tables:
+        assert table.rows[0]._tr.trPr is not None and table.rows[0]._tr.trPr.find(qn("w:tblHeader")) is not None
+        assert all(r._tr.trPr is not None and r._tr.trPr.find(qn("w:cantSplit")) is not None for r in table.rows)

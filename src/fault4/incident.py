@@ -40,7 +40,7 @@ _ATTACK_REF = {
     "backup_deletion": "T1490 Inhibit System Recovery (tactic: Impact)",
     "outbound_unknown": "T1041 Exfiltration Over C2 Channel (tactic: Exfiltration)",
     "db_access_spike": (
-        "TA0008 Lateral Movement (pivot RS-01 → DB) + "
+        "TA0008 Lateral Movement (assumed T1021 Remote Services, RS-01 → DB) + "
         "T1213 Data from Information Repositories (tactic: Collection)"
     ),
     "av_disabled": "T1562.001 Impair Defenses: Disable or Modify Tools (tactic: Defense Evasion)",
@@ -123,7 +123,7 @@ def _evidence(e: Event, stage: str, events: Sequence[Event], failures: int, firs
             "so exfiltration is assessed, not confirmed."
         )
     if e.kind == "db_access_spike":
-        feeds = f" The queries feed the outbound channel opened at {outbound.time}." if outbound else ""
+        feeds = f" The queries may feed the outbound channel opened at {outbound.time}." if outbound else ""
         return (
             f"Database access spike from {e.source}: the compromised server is used as a pivot into the research "
             f"database. Stated assumption: the database runs on a separate host.{feeds}"

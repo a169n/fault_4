@@ -63,7 +63,8 @@ COMPONENTS: Tuple[Component, ...] = (
         "monitoring", "Monitoring / SIEM",
         "Wazuh SIEM + Prometheus/Grafana, correlation rules, active response",
         "Security zone", "detective", "Monitoring",
-        "Detective: raises the 09:01 and 09:07 alerts and triggers responses, but blocks nothing itself.",
+        "Detective: raises the 09:01 and 09:07 alerts. Its active response only orchestrates; the hypervisor, "
+        "firewall and identity provider carry out the containment.",
     ),
     Component(
         "ids", "Intrusion detection",
@@ -73,27 +74,37 @@ COMPONENTS: Tuple[Component, ...] = (
     ),
     Component(
         "immutable_backup", "Immutable backup",
-        "ZFS snapshots every 3 min on RS-01; the vault pulls incrementals (zfs send -i | zfs receive, initiated "
-        "from the vault) into its own pool with zfs hold; restic copy into a MinIO bucket with S3 Object Lock "
-        "(compliance mode, 30 days); PostgreSQL WAL pulled continuously by pg_receivewal on the vault plus a "
-        "nightly base backup; production holds no vault credentials",
+        "Tier 1 (fast restore): ZFS snapshots every 3 min on RS-01, pulled by the vault (zfs send -i | zfs receive, "
+        "initiated from the vault) into its own pool and held with zfs hold; PostgreSQL WAL pulled continuously by "
+        "pg_receivewal on the vault plus a nightly base backup. Tier 2 (WORM): restic copies every 15 min into a "
+        "MinIO bucket with S3 Object Lock in compliance mode (30 days). Production holds no vault credentials",
         "Backup vault (pull-only)", "recovery", "Immutable backup",
-        "Recovery: does not stop encryption, but guarantees an untouchable clean restore point "
-        "(worst-case data loss 4 min).",
+        "Recovery against ransomware: it does not stop encryption, but keeps clean restore points out of the "
+        "attacker's reach. Tier 1 (worst-case loss 4 min) is protected by credential separation and zfs hold; "
+        "tier 2 is write-once even for a vault administrator.",
     ),
     Component(
         "failover", "Secure failover",
-        "Research-Server-02: warm VM cloned from a golden image, holds no data, separate VLAN, promoted only "
-        "after data is restored from a verified clean point",
-        "Research zone", "recovery", "Secure failover",
+        "Research-Server-02: warm VM cloned from a golden image, holds no data and waits in the isolated recovery "
+        "VLAN, out of reach of an attacker in the research VLAN; promoted after verification by re-tagging its vNIC "
+        "into the research VLAN and switching the service VIP/DNS",
+        "Recovery zone (isolated VLAN; moved into the research VLAN on promotion)", "recovery", "Secure failover",
         "Recovery: restores service on clean infrastructure within the RTO and never receives live-replicated "
         "(encrypted) data.",
     ),
     Component(
         "recovery_env", "Recovery environment",
         "Isolated clean-room VLAN without internet access: restore, scan, verify",
-        "Recovery zone", "recovery", "Recovery environment",
+        "Recovery zone (isolated VLAN)", "recovery", "Recovery environment",
         "Recovery: restored data is verified in isolation before it returns to production.",
+    ),
+    Component(
+        "hypervisor", "Virtualisation host (hypervisor)",
+        "VM cluster running RS-01 and RS-02; its API lets Wazuh active response pause a VM, re-tag its vNIC into the "
+        "quarantine VLAN and take memory + disk snapshots for evidence",
+        "Research zone (platform)", "recovery", "supporting",
+        "Response point, listed with recovery because the template has no respond column: containment and evidence "
+        "capture happen here, since VLAN membership is set on the vNIC, not on the firewall.",
     ),
     Component(
         "offline_copy", "Offline copy at a second Kazakhstan site",
@@ -121,16 +132,17 @@ THREAT_CONTROLS: Tuple[ThreatControls, ...] = (
         "user-writable mounts plus application allow-listing (fapolicyd)",
         "Canary-file write (immediate); FIM rate ≥100 changes/min AND extension/entropy change; CPU >90% and AI "
         "score used only as correlating signals",
-        "Respond: automated quarantine + VM pause. Recover: restore data from the verified clean point onto RS-02 "
-        "and verify it in the clean room",
-        ("segmentation", "pam", "ids", "immutable_backup", "failover", "recovery_env"),
+        "Respond: the hypervisor pauses RS-01 and moves it into the quarantine VLAN. Recover: restore data from the "
+        "verified clean point onto RS-02, verify it in the clean room, then promote RS-02",
+        ("segmentation", "pam", "ids", "hypervisor", "immutable_backup", "failover", "recovery_env"),
     ),
     ThreatControls(
         "Backup deletion",
-        "Object Lock compliance mode; pull-based backups, so production holds no vault credentials; "
-        "just-in-time admin",
+        "Pull-only vault, so production holds no vault credentials; zfs hold on vault snapshots; Object Lock "
+        "compliance mode on the restic tier; just-in-time admin",
         "Alert on any delete or retention-change API call, or a failed vault login",
-        "Recover: restore from the locked copy; the offline Almaty copy is the last resort",
+        "Recover: restore from the vault (tier 1, then the Object Lock tier); the offline Almaty copy is the last "
+        "resort",
         ("immutable_backup", "pam", "monitoring", "offline_copy"),
     ),
     ThreatControls(

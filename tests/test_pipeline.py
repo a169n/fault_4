@@ -39,3 +39,24 @@ def test_cli_runs_from_other_cwd(tmp_path):
     env = {**os.environ, "PYTHONPATH": str(REPO_ROOT / "src")}
     p = subprocess.run([sys.executable, "-m", "fault4", "analyze", "--out", str(tmp_path)], cwd=tmp_path, env=env)
     assert p.returncode == 0 and (tmp_path / "results.json").exists()
+
+
+def _git(repo, *args):
+    subprocess.run(["git", "-c", "user.email=t@t", "-c", "user.name=t", *args], cwd=repo, check=True,
+                   capture_output=True)
+
+
+def test_git_commit_ignores_regenerated_outputs(tmp_path):
+    from fault4.pipeline import git_commit
+
+    (tmp_path / "src").mkdir()
+    (tmp_path / "outputs").mkdir()
+    (tmp_path / "src" / "m.py").write_text("x = 1\n")
+    (tmp_path / "outputs" / "test_log.txt").write_text("1 passed\n")
+    _git(tmp_path, "init", "-q")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-q", "-m", "init")
+    (tmp_path / "outputs" / "test_log.txt").write_text("1 passed in 0.2s\n")  # run_all.sh rewrites this
+    assert not git_commit(tmp_path).endswith("-dirty")
+    (tmp_path / "src" / "m.py").write_text("x = 2\n")  # a real input change
+    assert git_commit(tmp_path).endswith("-dirty")

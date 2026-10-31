@@ -36,3 +36,14 @@ def test_gap_detection_unknown_and_unused():
 def test_gap_detection_missing_required_and_empty_cell():
     gaps = coverage_gaps(COMPONENTS[1:], (ThreatControls("Y", "", "d", "r", ("segmentation",)),))
     assert any("MFA" in g for g in gaps) and any("Y" in g and "preventive" in g for g in gaps)
+
+
+def test_hypervisor_is_part_of_the_architecture():
+    by_key = {c.key: c for c in COMPONENTS}
+    assert by_key["hypervisor"].role == "recovery" and "quarantine VLAN" in by_key["hypervisor"].technology
+    assert any("hypervisor" in t.components for t in THREAT_CONTROLS)
+
+
+def test_standby_lives_in_the_isolated_recovery_zone():
+    by_key = {c.key: c for c in COMPONENTS}
+    assert by_key["failover"].zone.startswith("Recovery zone") and "promot" in by_key["failover"].technology
