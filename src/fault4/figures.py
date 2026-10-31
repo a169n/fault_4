@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 from matplotlib.patches import FancyArrowPatch, FancyBboxPatch, Rectangle  # noqa: E402
 
 from fault4.data import OUTPUT_DIR  # noqa: E402
+from fault4.report_content import ARCHITECTURE_FLOW  # noqa: E402
 
 DPI = 150
 SURFACE = "#ffffff"
@@ -91,21 +92,6 @@ def _path(ax, points, num=None, label_xy=None, color: str = TEXT_2, style: str =
 def _badge(ax, xy, num: str, size: float = 8.5) -> None:
     ax.text(*xy, num, ha="center", va="center", fontsize=size, fontweight="bold", color=TEXT, zorder=6,
             bbox=dict(boxstyle="circle,pad=0.2", facecolor=SURFACE, edgecolor=TEXT, linewidth=0.9))
-
-
-ARCHITECTURE_FLOW = (
-    ("Access", "users reach RS-01 only through the SSH bastion with MFA; the guessed password used at 09:04 "
-               "would be rejected."),
-    ("Backup", "the vault pulls RS-01 snapshots every 3 min and the DB WAL continuously; production cannot "
-               "delete them (09:12 attempt fails)."),
-    ("Detection", "logs, FIM and canary-file events go to the SIEM, IDS and AI scorer (alerts at 09:01 and 09:07)."),
-    ("Response", "the SIEM tells the firewall to move RS-01 into the quarantine VLAN and pauses the VM "
-                 "(isolated by 09:09)."),
-    ("Egress control", "connections to unknown IPs are denied at the firewall (the 09:13 channel fails)."),
-    ("Restore", "data from the last clean snapshot is restored and verified in the isolated clean room, "
-                "then RS-02 is promoted (24 min)."),
-    ("Last-resort copy", "a daily transfer window copies the vault to the offline site in Almaty (24 h tier)."),
-)
 
 
 def render_architecture(results: Dict[str, Any], path: Path) -> Path:

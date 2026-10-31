@@ -10,7 +10,7 @@ import sys
 from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from fault4 import __version__
 from fault4.anomaly import ANOMALY_THRESHOLD, anomaly_summary, score_signals, threshold_sensitivity
@@ -237,9 +237,27 @@ def _figures(results: Dict[str, Any], out_dir: Path) -> List[Path]:
     return paths
 
 
+def _astana(moment: datetime) -> str:
+    return moment.astimezone(ASTANA).strftime("%Y-%m-%d %H:%M") + " (UTC+5, Astana)"
+
+
+def work_period(repo_root: Path = REPO_ROOT) -> Optional[Tuple[str, str]]:
+    """(first commit time, now), both formatted in Astana time; None without git history."""
+    try:
+        out = subprocess.run(["git", "log", "--reverse", "--format=%cI"], cwd=str(repo_root),
+                             capture_output=True, text=True, check=True).stdout.split()
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    if not out:
+        return None
+    return _astana(datetime.fromisoformat(out[0])), _astana(datetime.now(timezone.utc))
+
+
 def _report(results: Dict[str, Any], figures: List[Path], args: argparse.Namespace, commit: Optional[str]) -> Path:
-    print("report: not yet available", file=sys.stderr)
-    raise SystemExit(2)
+    from fault4.report_docx import build_report
+
+    return build_report(results, figures, Path(args.report_dir) / "Assignment4_Talgatov_Aibyn.docx", commit=commit,
+                        work_period=work_period(), submission_date=args.submission_date)
 
 
 def main(argv: Optional[List[str]] = None) -> int:
