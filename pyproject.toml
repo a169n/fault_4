@@ -1,3 +1,5 @@
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
+# matplotlib 3.9.4 calls pyparsing APIs that pyparsing >= 3.3 deprecates; not our code.
+filterwarnings = ["ignore::DeprecationWarning:matplotlib.*"]

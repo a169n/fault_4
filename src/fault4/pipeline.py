@@ -229,8 +229,12 @@ def write_outputs(results: Dict[str, Any], out_dir: Path = OUTPUT_DIR, commit: O
 
 
 def _figures(results: Dict[str, Any], out_dir: Path) -> List[Path]:
-    print("figures: not yet available", file=sys.stderr)
-    raise SystemExit(2)
+    from fault4.figures import render_all  # imported lazily: matplotlib is only needed for figures
+
+    paths = render_all(results, out_dir)
+    for path in paths:
+        print(f"wrote {path}")
+    return paths
 
 
 def _report(results: Dict[str, Any], figures: List[Path], args: argparse.Namespace, commit: Optional[str]) -> Path:
