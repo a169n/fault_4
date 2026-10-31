@@ -113,7 +113,7 @@
         "role": "detective",
         "satisfies": "Monitoring",
         "technology": "Wazuh SIEM + Prometheus/Grafana, correlation rules, active response",
-        "why": "Detective: raises the 09:01 and 09:07 alerts and triggers responses, but blocks nothing itself.",
+        "why": "Detective: raises the 09:01 and 09:07 alerts. Its active response only orchestrates; the hypervisor, firewall and identity provider carry out the containment.",
         "zone": "Security zone"
       },
       {
@@ -130,8 +130,8 @@
         "name": "Immutable backup",
         "role": "recovery",
         "satisfies": "Immutable backup",
-        "technology": "ZFS snapshots every 3 min on RS-01; the vault pulls incrementals (zfs send -i | zfs receive, initiated from the vault) into its own pool with zfs hold; restic copy into a MinIO bucket with S3 Object Lock (compliance mode, 30 days); PostgreSQL WAL pulled continuously by pg_receivewal on the vault plus a nightly base backup; production holds no vault credentials",
-        "why": "Recovery: does not stop encryption, but guarantees an untouchable clean restore point (worst-case data loss 4 min).",
+        "technology": "Tier 1 (fast restore): ZFS snapshots every 3 min on RS-01, pulled by the vault (zfs send -i | zfs receive, initiated from the vault) into its own pool and held with zfs hold; PostgreSQL WAL pulled continuously by pg_receivewal on the vault plus a nightly base backup. Tier 2 (WORM): restic copies every 15 min into a MinIO bucket with S3 Object Lock in compliance mode (30 days). Production holds no vault credentials",
+        "why": "Recovery against ransomware: it does not stop encryption, but keeps clean restore points out of the attacker's reach. Tier 1 (worst-case loss 4 min) is protected by credential separation and zfs hold; tier 2 is write-once even for a vault administrator.",
         "zone": "Backup vault (pull-only)"
       },
       {
@@ -139,9 +139,9 @@
         "name": "Secure failover",
         "role": "recovery",
         "satisfies": "Secure failover",
-        "technology": "Research-Server-02: warm VM cloned from a golden image, holds no data, separate VLAN, promoted only after data is restored from a verified clean point",
+        "technology": "Research-Server-02: warm VM cloned from a golden image, holds no data and waits in the isolated recovery VLAN, out of reach of an attacker in the research VLAN; promoted after verification by re-tagging its vNIC into the research VLAN and switching the service VIP/DNS",
         "why": "Recovery: restores service on clean infrastructure within the RTO and never receives live-replicated (encrypted) data.",
-        "zone": "Research zone"
+        "zone": "Recovery zone (isolated VLAN; moved into the research VLAN on promotion)"
       },
       {
         "key": "recovery_env",
@@ -150,7 +150,16 @@
         "satisfies": "Recovery environment",
         "technology": "Isolated clean-room VLAN without internet access: restore, scan, verify",
         "why": "Recovery: restored data is verified in isolation before it returns to production.",
-        "zone": "Recovery zone"
+        "zone": "Recovery zone (isolated VLAN)"
+      },
+      {
+        "key": "hypervisor",
+        "name": "Virtualisation host (hypervisor)",
+        "role": "recovery",
+        "satisfies": "supporting",
+        "technology": "VM cluster running RS-01 and RS-02; its API lets Wazuh active response pause a VM, re-tag its vNIC into the quarantine VLAN and take memory + disk snapshots for evidence",
+        "why": "Response point, listed with recovery because the template has no respond column: containment and evidence capture happen here, since VLAN membership is set on the vNIC, not on the firewall.",
+        "zone": "Research zone (platform)"
       },
       {
         "key": "offline_copy",
@@ -180,13 +189,14 @@
           "segmentation",
           "pam",
           "ids",
+          "hypervisor",
           "immutable_backup",
           "failover",
           "recovery_env"
         ],
         "detective": "Canary-file write (immediate); FIM rate ≥100 changes/min AND extension/entropy change; CPU >90% and AI score used only as correlating signals",
         "preventive": "Segmentation; least-privilege write access to research shares; noexec on /tmp, /dev/shm and user-writable mounts plus application allow-listing (fapolicyd)",
-        "recovery": "Respond: automated quarantine + VM pause. Recover: restore data from the verified clean point onto RS-02 and verify it in the clean room",
+        "recovery": "Respond: the hypervisor pauses RS-01 and moves it into the quarantine VLAN. Recover: restore data from the verified clean point onto RS-02, verify it in the clean room, then promote RS-02",
         "threat": "Ransomware"
       },
       {
@@ -197,8 +207,8 @@
           "offline_copy"
         ],
         "detective": "Alert on any delete or retention-change API call, or a failed vault login",
-        "preventive": "Object Lock compliance mode; pull-based backups, so production holds no vault credentials; just-in-time admin",
-        "recovery": "Recover: restore from the locked copy; the offline Almaty copy is the last resort",
+        "preventive": "Pull-only vault, so production holds no vault credentials; zfs hold on vault snapshots; Object Lock compliance mode on the restic tier; just-in-time admin",
+        "recovery": "Recover: restore from the vault (tier 1, then the Object Lock tier); the offline Almaty copy is the last resort",
         "threat": "Backup deletion"
       },
       {
@@ -324,9 +334,9 @@
       },
       {
         "alternative": "Exfiltration (collection).",
-        "attack_ref": "TA0008 Lateral Movement (pivot RS-01 → DB) + T1213 Data from Information Repositories (tactic: Collection)",
+        "attack_ref": "TA0008 Lateral Movement (assumed T1021 Remote Services, RS-01 → DB) + T1213 Data from Information Repositories (tactic: Collection)",
         "event": "Database access spike",
-        "evidence": "Database access spike from Research-Server-01: the compromised server is used as a pivot into the research database. Stated assumption: the database runs on a separate host. The queries feed the outbound channel opened at 09:13.",
+        "evidence": "Database access spike from Research-Server-01: the compromised server is used as a pivot into the research database. Stated assumption: the database runs on a separate host. The queries may feed the outbound channel opened at 09:13.",
         "risk": "High",
         "severity": "High",
         "source": "Research-Server-01",
@@ -383,11 +393,11 @@
       },
       {
         "action": "Isolate affected system",
-        "component": "segmentation (quarantine VLAN) + hypervisor (VM pause) + privacyIDEA/IdP (account lock), triggered by Wazuh active response",
+        "component": "hypervisor (VM pause, vNIC into the quarantine VLAN) + segmentation (OPNsense deny rule) + privacyIDEA/IdP (account lock), triggered by Wazuh active response",
         "depends_on": [
           1
         ],
-        "details": "Automated: move RS-01 to the quarantine VLAN, pause the VM (memory preserved), lock the compromised account and block 10.20.4.15.",
+        "details": "Automated: the hypervisor pauses RS-01 (memory preserved) and re-tags its vNIC into the quarantine VLAN, OPNsense blocks 10.20.4.15 and RS-01's address, and privacyIDEA locks the compromised account.",
         "duration_min": 1,
         "finish_min": 2,
         "number": 2,
@@ -411,7 +421,7 @@
         "depends_on": [
           2
         ],
-        "details": "Choose the clean point (09:06 if the clean-room check passes, otherwise 09:03, before attacker access) and clone it read-only into the recovery environment.",
+        "details": "Choose the clean point before restoring: diff the 09:06 snapshot against 09:03 (new executables, authorized_keys or cron entries, changed canaries). Use 09:06 if the diff is clean, otherwise 09:03 (before attacker access), and clone it read-only into the recovery environment.",
         "duration_min": 3,
         "finish_min": 5,
         "number": 4,
@@ -443,12 +453,12 @@
       },
       {
         "action": "Return to production",
-        "component": "failover + segmentation (VIP/DNS switch, rotated credentials, heightened monitoring)",
+        "component": "failover + hypervisor (RS-02 vNIC into the research VLAN, VIP/DNS switch, rotated credentials)",
         "depends_on": [
           3,
           6
         ],
-        "details": "Switch the service VIP/DNS to RS-02 with rotated credentials and heightened monitoring; only after the evidence is preserved and integrity is verified.",
+        "details": "Promote RS-02: re-tag its vNIC from the recovery VLAN into the research VLAN, switch the service VIP/DNS, rotate credentials and keep heightened monitoring; only after the evidence is preserved and integrity is verified.",
         "duration_min": 2,
         "finish_min": 20,
         "number": 7,
@@ -745,7 +755,7 @@
         },
         {
           "event": "Backup deletion attempt",
-          "note": "RS-01 isolated at 09:09; independently blocked by object lock (immutable backup)",
+          "note": "RS-01 isolated at 09:09; independently blocked by vault credential separation (RS-01 holds no vault credentials; copies under zfs hold / object lock)",
           "status": "contained",
           "time": "09:12"
         },
@@ -779,10 +789,10 @@
       "files_impacted": 1200,
       "first_detection": "09:01",
       "label": "Assume breach, manual isolation",
-      "recovery_time_min": 24,
+      "recovery_time_min": 26,
       "scenario": "hardened_manual_isolation",
       "stopped_at": "09:11",
-      "stopped_by": "automated isolation (FIM rate + entropy rule)",
+      "stopped_by": "isolation 4 min after the FIM rate + entropy alert",
       "timeline": [
         {
           "event": "15 failed logins",
@@ -822,7 +832,7 @@
         },
         {
           "event": "Backup deletion attempt",
-          "note": "RS-01 isolated at 09:11; independently blocked by object lock (immutable backup)",
+          "note": "RS-01 isolated at 09:11; independently blocked by vault credential separation (RS-01 holds no vault credentials; copies under zfs hold / object lock)",
           "status": "contained",
           "time": "09:12"
         },

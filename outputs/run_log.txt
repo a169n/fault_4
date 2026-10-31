@@ -1,8 +1,8 @@
 fault4 run log — Assignment 4 (synthetic data)
-run at:        2026-10-31 11:28:05 (UTC+5, Astana)
+run at:        2026-10-31 11:56:23 (UTC+5, Astana)
 python:        3.13.18 on Linux-6.18.44-fc-v185-x86_64-with-glibc2.39
 fault4:        v1.0.0
-git commit:    da3fd42
+git commit:    fd466d9
 data sources (SHA-256):
   Assignment_4_AITU_Security_Resilience_Report_Template.pdf: a1c8c43e799a9f2f31d9b5200f772ab99b37054ad648dbaa6d4770475675e35a
   anomaly_scores.csv: d50d601682cda1f6bd3ef5381520f215989eea1b3f14402f44bb85f42d272a0d
@@ -57,4 +57,4 @@ Before/after simulation
   baseline                    True    -         1200 True         True   unbnd  n/a
   hardened                    False   09:01        0 False        False  0      0
   hardened_assume_breach      True    09:09      320 False        False  1      24
-  hardened_manual_isolation   True    09:11     1200 False        False  1      24
+  hardened_manual_isolation   True    09:11     1200 False        False  1      26
