@@ -1,0 +1,851 @@
+{
+  "anomaly": {
+    "signals": [
+      {
+        "delta": 0.71,
+        "is_anomaly": true,
+        "margin": 0.06,
+        "name": "Login failures",
+        "normal": 0.1,
+        "observed": 0.81,
+        "ratio": 8.1
+      },
+      {
+        "delta": 0.84,
+        "is_anomaly": true,
+        "margin": 0.21,
+        "name": "File modifications",
+        "normal": 0.12,
+        "observed": 0.96,
+        "ratio": 8.0
+      },
+      {
+        "delta": 0.68,
+        "is_anomaly": true,
+        "margin": 0.13,
+        "name": "CPU usage",
+        "normal": 0.2,
+        "observed": 0.88,
+        "ratio": 4.4
+      },
+      {
+        "delta": 0.64,
+        "is_anomaly": true,
+        "margin": 0.04,
+        "name": "Outbound traffic",
+        "normal": 0.15,
+        "observed": 0.79,
+        "ratio": 5.27
+      },
+      {
+        "delta": 0.73,
+        "is_anomaly": true,
+        "margin": 0.16,
+        "name": "Database requests",
+        "normal": 0.18,
+        "observed": 0.91,
+        "ratio": 5.06
+      }
+    ],
+    "summary": {
+      "count": 5,
+      "highest_by_ratio": "Login failures",
+      "highest_priority": "File modifications",
+      "rate": 1.0,
+      "total": 5
+    },
+    "threshold": 0.75,
+    "threshold_sensitivity": [
+      {
+        "count": 5,
+        "threshold": 0.75
+      },
+      {
+        "count": 4,
+        "threshold": 0.8
+      },
+      {
+        "count": 3,
+        "threshold": 0.85
+      },
+      {
+        "count": 2,
+        "threshold": 0.9
+      },
+      {
+        "count": 1,
+        "threshold": 0.95
+      }
+    ]
+  },
+  "controls": {
+    "components": [
+      {
+        "key": "mfa",
+        "name": "Multi-factor authentication",
+        "role": "preventive",
+        "satisfies": "MFA",
+        "technology": "privacyIDEA TOTP/push via its PAM module on the SSH bastion and its FreeRADIUS plugin on the VPN; administrators additionally use FIDO2 OpenSSH keys (ed25519-sk); per-source-IP lockout at 10 failures / 5 min",
+        "why": "Preventive: stops a guessed password from becoming a session; it would have blocked the 09:04 login.",
+        "zone": "Access zone"
+      },
+      {
+        "key": "segmentation",
+        "name": "Network segmentation",
+        "role": "preventive",
+        "satisfies": "Network segmentation",
+        "technology": "OPNsense firewall, VLANs, default-deny inter-zone rules, egress allow-list proxy, quarantine VLAN",
+        "why": "Preventive by design: 10.20.4.15 reaches RS-01 only through the bastion and unknown egress (09:13) is denied. Its quarantine VLAN is reused for containment in recovery step 2.",
+        "zone": "All zone boundaries"
+      },
+      {
+        "key": "pam",
+        "name": "Privileged access management",
+        "role": "preventive",
+        "satisfies": "supporting",
+        "technology": "Just-in-time sudo, separate admin accounts, no standing root, agent tamper protection",
+        "why": "Preventive: backup deletion (09:12) and disabling antivirus (09:18) need a just-in-time approval the attacker does not have.",
+        "zone": "Access zone"
+      },
+      {
+        "key": "monitoring",
+        "name": "Monitoring / SIEM",
+        "role": "detective",
+        "satisfies": "Monitoring",
+        "technology": "Wazuh SIEM + Prometheus/Grafana, correlation rules, active response",
+        "why": "Detective: raises the 09:01 and 09:07 alerts and triggers responses, but blocks nothing itself.",
+        "zone": "Security zone"
+      },
+      {
+        "key": "ids",
+        "name": "Intrusion detection",
+        "role": "detective",
+        "satisfies": "Intrusion detection",
+        "technology": "Suricata NIDS, Wazuh HIDS/FIM with canary files and an extension/entropy check, AI anomaly scorer",
+        "why": "Detective: detects the encryption (09:07) and the unknown outbound connection (09:13).",
+        "zone": "Security zone"
+      },
+      {
+        "key": "immutable_backup",
+        "name": "Immutable backup",
+        "role": "recovery",
+        "satisfies": "Immutable backup",
+        "technology": "ZFS snapshots every 3 min on RS-01; the vault pulls incrementals (zfs send -i | zfs receive, initiated from the vault) into its own pool with zfs hold; restic copy into a MinIO bucket with S3 Object Lock (compliance mode, 30 days); PostgreSQL WAL pulled continuously by pg_receivewal on the vault plus a nightly base backup; production holds no vault credentials",
+        "why": "Recovery: does not stop encryption, but guarantees an untouchable clean restore point (worst-case data loss 4 min).",
+        "zone": "Backup vault (pull-only)"
+      },
+      {
+        "key": "failover",
+        "name": "Secure failover",
+        "role": "recovery",
+        "satisfies": "Secure failover",
+        "technology": "Research-Server-02: warm VM cloned from a golden image, holds no data, separate VLAN, promoted only after data is restored from a verified clean point",
+        "why": "Recovery: restores service on clean infrastructure within the RTO and never receives live-replicated (encrypted) data.",
+        "zone": "Research zone"
+      },
+      {
+        "key": "recovery_env",
+        "name": "Recovery environment",
+        "role": "recovery",
+        "satisfies": "Recovery environment",
+        "technology": "Isolated clean-room VLAN without internet access: restore, scan, verify",
+        "why": "Recovery: restored data is verified in isolation before it returns to production.",
+        "zone": "Recovery zone"
+      },
+      {
+        "key": "offline_copy",
+        "name": "Offline copy at a second Kazakhstan site",
+        "role": "recovery",
+        "satisfies": "Additional",
+        "technology": "Logically air-gapped copy in Almaty (~970 km from Astana): transfer window opened daily from the Almaty side only, monthly rotation to disconnected media, separate admin domain, monthly restore drill; data-loss tier 24 h",
+        "why": "Recovery: last resort that survives compromise of the vault's admin plane or loss of the Astana site.",
+        "zone": "Second site (Almaty)"
+      }
+    ],
+    "coverage_gaps": [],
+    "threat_controls": [
+      {
+        "components": [
+          "mfa",
+          "segmentation",
+          "monitoring"
+        ],
+        "detective": "SIEM alert at ≥10 failures / 5 min per source; \"success after failures\" correlation",
+        "preventive": "MFA on the bastion and VPN; per-source-IP lockout at 10 failures / 5 min (per IP, not per account, so attackers cannot lock researchers out); SSH unreachable from the user VLAN",
+        "recovery": "Respond: block the source, revoke sessions. Recover: rotate the password, re-enrol MFA, review account activity",
+        "threat": "Credential attack"
+      },
+      {
+        "components": [
+          "segmentation",
+          "pam",
+          "ids",
+          "immutable_backup",
+          "failover",
+          "recovery_env"
+        ],
+        "detective": "Canary-file write (immediate); FIM rate ≥100 changes/min AND extension/entropy change; CPU >90% and AI score used only as correlating signals",
+        "preventive": "Segmentation; least-privilege write access to research shares; noexec on /tmp, /dev/shm and user-writable mounts plus application allow-listing (fapolicyd)",
+        "recovery": "Respond: automated quarantine + VM pause. Recover: restore data from the verified clean point onto RS-02 and verify it in the clean room",
+        "threat": "Ransomware"
+      },
+      {
+        "components": [
+          "immutable_backup",
+          "pam",
+          "monitoring",
+          "offline_copy"
+        ],
+        "detective": "Alert on any delete or retention-change API call, or a failed vault login",
+        "preventive": "Object Lock compliance mode; pull-based backups, so production holds no vault credentials; just-in-time admin",
+        "recovery": "Recover: restore from the locked copy; the offline Almaty copy is the last resort",
+        "threat": "Backup deletion"
+      },
+      {
+        "components": [
+          "segmentation",
+          "pam",
+          "ids",
+          "monitoring"
+        ],
+        "detective": "Suricata alert on a non-allow-listed destination and on volume anomalies; database query-rate anomaly",
+        "preventive": "Egress default-deny allow-list proxy; least-privilege database roles",
+        "recovery": "Respond: block the destination, revoke database credentials. Recover: scope the leaked records, report to KZ-CERT, and notify the authorised personal-data body and data subjects where Law No. 94-V and university policy require it",
+        "threat": "Data exfiltration"
+      },
+      {
+        "components": [
+          "pam",
+          "monitoring",
+          "recovery_env"
+        ],
+        "detective": "Alert on AV/EDR stop, a new admin account, or sudo outside the just-in-time window",
+        "preventive": "Just-in-time admin, no standing root, agent tamper protection",
+        "recovery": "Recover: rebuild the host from a golden image in the clean room; rotate all privileged credentials",
+        "threat": "Privilege escalation"
+      }
+    ]
+  },
+  "data_sources": {
+    "Assignment_4_AITU_Security_Resilience_Report_Template.pdf": "a1c8c43e799a9f2f31d9b5200f772ab99b37054ad648dbaa6d4770475675e35a",
+    "anomaly_scores.csv": "d50d601682cda1f6bd3ef5381520f215989eea1b3f14402f44bb85f42d272a0d",
+    "incident_events.csv": "b4b3b59765035a9fd853bc643ded10d73fa8a3284bb49c4e34ccad0842d2ed91",
+    "scenarios.json": "65637ad3a1ba280d3316c94c054c59a757c1a5dd610aba59947064ceeefacd30"
+  },
+  "incident": {
+    "events": [
+      {
+        "alternative": "Start of the credential attack (T1110).",
+        "attack_ref": "T1589 Gather Victim Identity Information (tactic: Reconnaissance)",
+        "event": "15 failed logins",
+        "evidence": "First contact from 10.20.4.15: 15 failed logins in the first logged burst (Medium severity). Consistent with probing which usernames exist and whether lockout is enforced.",
+        "risk": "Medium",
+        "severity": "Medium",
+        "source": "10.20.4.15",
+        "stage": "reconnaissance",
+        "time": "09:01"
+      },
+      {
+        "alternative": "",
+        "attack_ref": "T1110.001 Password Guessing (tactic: Credential Access)",
+        "event": "21 failed logins",
+        "evidence": "21 more failed logins from the same source 10.20.4.15; 36 cumulative failures logged between 09:01 and 09:03.",
+        "risk": "High",
+        "severity": "High",
+        "source": "10.20.4.15",
+        "stage": "credential attack",
+        "time": "09:03"
+      },
+      {
+        "alternative": "",
+        "attack_ref": "T1078 Valid Accounts (tactic: Initial Access)",
+        "event": "Successful login",
+        "evidence": "Successful login from 10.20.4.15 immediately after 36 failed attempts (first failure logged 09:01): a guessed password became a valid session.",
+        "risk": "Critical",
+        "severity": "High",
+        "source": "10.20.4.15",
+        "stage": "privilege compromise",
+        "time": "09:04"
+      },
+      {
+        "alternative": "",
+        "attack_ref": "T1486 Data Encrypted for Impact (tactic: Impact)",
+        "event": "320 files modified",
+        "evidence": "320 files modified by the attacker session (source 10.20.4.15), 3 min after the successful login.",
+        "risk": "Critical",
+        "severity": "Critical",
+        "source": "10.20.4.15",
+        "stage": "data destruction",
+        "time": "09:07"
+      },
+      {
+        "alternative": "95% CPU alone is not specific on a research server (see Part E); resource hijacking (T1496) is less likely given the timing.",
+        "attack_ref": "T1486 Data Encrypted for Impact (tactic: Impact)",
+        "event": "CPU usage increased to 95%",
+        "evidence": "CPU at 95% on Research-Server-01, 1 min after the 320 file modifications and 2 min before 1,200 files are reported encrypted, so consistent with the encryption workload.",
+        "risk": "High",
+        "severity": "High",
+        "source": "Research-Server-01",
+        "stage": "data destruction",
+        "time": "09:08"
+      },
+      {
+        "alternative": "",
+        "attack_ref": "T1486 Data Encrypted for Impact (tactic: Impact)",
+        "event": "1,200 files encrypted",
+        "evidence": "1,200 files encrypted on Research-Server-01: direct loss of research data.",
+        "risk": "Critical",
+        "severity": "Critical",
+        "source": "Research-Server-01",
+        "stage": "data destruction",
+        "time": "09:10"
+      },
+      {
+        "alternative": "",
+        "attack_ref": "T1490 Inhibit System Recovery (tactic: Impact)",
+        "event": "Backup deletion attempt",
+        "evidence": "Backup deletion attempt on Research-Server-01, 2 min after encryption: an attack on the ability to recover.",
+        "risk": "Critical",
+        "severity": "Critical",
+        "source": "Research-Server-01",
+        "stage": "recovery attack",
+        "time": "09:12"
+      },
+      {
+        "alternative": "A command-and-control channel only; double extortion is a hypothesis.",
+        "attack_ref": "T1041 Exfiltration Over C2 Channel (tactic: Exfiltration)",
+        "event": "Outbound connection to unknown IP",
+        "evidence": "Outbound connection from Research-Server-01 to an unknown IP. No transfer volume is logged, so exfiltration is assessed, not confirmed.",
+        "risk": "High",
+        "severity": "High",
+        "source": "Research-Server-01",
+        "stage": "exfiltration",
+        "time": "09:13"
+      },
+      {
+        "alternative": "Exfiltration (collection).",
+        "attack_ref": "TA0008 Lateral Movement (pivot RS-01 → DB) + T1213 Data from Information Repositories (tactic: Collection)",
+        "event": "Database access spike",
+        "evidence": "Database access spike from Research-Server-01: the compromised server is used as a pivot into the research database. Stated assumption: the database runs on a separate host. The queries feed the outbound channel opened at 09:13.",
+        "risk": "High",
+        "severity": "High",
+        "source": "Research-Server-01",
+        "stage": "lateral movement",
+        "time": "09:15"
+      },
+      {
+        "alternative": "Defense evasion; the spec vocabulary has no such stage, so it is classed as persistence.",
+        "attack_ref": "T1562.001 Impair Defenses: Disable or Modify Tools (tactic: Defense Evasion)",
+        "event": "Antivirus disabled",
+        "evidence": "Antivirus disabled on Research-Server-01 at 09:18, 8 min after 1,200 files were encrypted. The dataset shows no AV alert during 09:07–09:10, so AV did not stop the encryption. Disabling it protects the attacker's continued access and hampers forensics.",
+        "risk": "Critical",
+        "severity": "Critical",
+        "source": "Research-Server-01",
+        "stage": "persistence",
+        "time": "09:18"
+      }
+    ],
+    "metrics": {
+      "attack_duration_minutes": 17,
+      "failed_logins_total": 36,
+      "minutes_compromise_to_encryption": 6,
+      "minutes_to_compromise": 3,
+      "stage_categories_used": 8
+    }
+  },
+  "recovery": {
+    "check": {
+      "recovery_time_critical_path": 20,
+      "recovery_time_sequential": 24,
+      "rpo_met": true,
+      "rpo_target": 5,
+      "rto_met": true,
+      "rto_target": 30,
+      "slack_min": 6,
+      "worst_case_data_loss": 4
+    },
+    "clean_points": {
+      "fallback": "09:03",
+      "preferred": "09:06"
+    },
+    "replication_lag_min": 1,
+    "snapshot_interval_min": 3,
+    "steps": [
+      {
+        "action": "Detect incident",
+        "component": "ids + monitoring (canary / FIM + entropy rule, SIEM correlation, AI score)",
+        "depends_on": [],
+        "details": "Canary write or FIM rate + entropy rule fires on the 09:07 mass modification; Wazuh correlates it with the 09:01 brute-force alert and the AI score.",
+        "duration_min": 1,
+        "finish_min": 1,
+        "number": 1,
+        "target_time": "1 min (by T+1)"
+      },
+      {
+        "action": "Isolate affected system",
+        "component": "segmentation (quarantine VLAN) + hypervisor (VM pause) + privacyIDEA/IdP (account lock), triggered by Wazuh active response",
+        "depends_on": [
+          1
+        ],
+        "details": "Automated: move RS-01 to the quarantine VLAN, pause the VM (memory preserved), lock the compromised account and block 10.20.4.15.",
+        "duration_min": 1,
+        "finish_min": 2,
+        "number": 2,
+        "target_time": "1 min (by T+2)"
+      },
+      {
+        "action": "Preserve evidence",
+        "component": "hypervisor (VM memory + disk snapshot) + monitoring (SIEM log export, SHA-256, WORM bucket)",
+        "depends_on": [
+          2
+        ],
+        "details": "Snapshot the paused VM's memory and disk, export SIEM/FIM/Suricata logs, hash everything with SHA-256 and store it in a write-once bucket.",
+        "duration_min": 4,
+        "finish_min": 6,
+        "number": 3,
+        "target_time": "4 min (by T+6, parallel with step 4)"
+      },
+      {
+        "action": "Activate backup",
+        "component": "immutable_backup (choose the clean point, clone it read-only from the vault ZFS pool into the clean room)",
+        "depends_on": [
+          2
+        ],
+        "details": "Choose the clean point (09:06 if the clean-room check passes, otherwise 09:03, before attacker access) and clone it read-only into the recovery environment.",
+        "duration_min": 3,
+        "finish_min": 5,
+        "number": 4,
+        "target_time": "3 min (by T+5, parallel with step 3)"
+      },
+      {
+        "action": "Restore services",
+        "component": "failover (RS-02 warm VM from a golden image; data copied from the clean point; PostgreSQL PITR)",
+        "depends_on": [
+          4
+        ],
+        "details": "Copy data from the clean point onto RS-02 (assumption: ≤200 GB over 10 GbE ≈ 3 min) and run PostgreSQL point-in-time recovery to the clean point (≤5 min) unless the DB audit log shows an earlier malicious write.",
+        "duration_min": 8,
+        "finish_min": 13,
+        "number": 5,
+        "target_time": "8 min (by T+13)"
+      },
+      {
+        "action": "Verify integrity",
+        "component": "recovery_env (hash manifest, YARA/AV scan, persistence check, DB consistency, canaries intact)",
+        "depends_on": [
+          5
+        ],
+        "details": "Compare file hashes with the clean-point manifest, scan with YARA/AV, confirm no new executables, authorized_keys or cron entries, run DB consistency checks and confirm the canary files are intact.",
+        "duration_min": 5,
+        "finish_min": 18,
+        "number": 6,
+        "target_time": "5 min (by T+18)"
+      },
+      {
+        "action": "Return to production",
+        "component": "failover + segmentation (VIP/DNS switch, rotated credentials, heightened monitoring)",
+        "depends_on": [
+          3,
+          6
+        ],
+        "details": "Switch the service VIP/DNS to RS-02 with rotated credentials and heightened monitoring; only after the evidence is preserved and integrity is verified.",
+        "duration_min": 2,
+        "finish_min": 20,
+        "number": 7,
+        "target_time": "2 min (by T+20)"
+      }
+    ]
+  },
+  "risk": {
+    "impact_rule": "Impact 5 = loss of research data or of the ability to recover; 4 = serious but bounded (access or confidentiality).",
+    "likelihood_rule": "Likelihood 5 = observed and succeeded in this incident; 4 = attempted or indirectly evidenced, with the outcome not logged.",
+    "threats": [
+      {
+        "impact": 4,
+        "impact_reason": "I4: it grants entry to the research server but is not damage by itself.",
+        "level": "Critical",
+        "likelihood": 5,
+        "likelihood_reason": "L5 (observed and succeeded): the 09:04 login succeeded after 36 guesses against password-only access.",
+        "rank": 3,
+        "score": 20,
+        "sensitivity": {
+          "L": "Critical",
+          "L+1": "Critical",
+          "L-1": "High"
+        },
+        "threat": "Credential compromise"
+      },
+      {
+        "impact": 5,
+        "impact_reason": "I5: loss of research data and of the server's availability.",
+        "level": "Critical",
+        "likelihood": 5,
+        "likelihood_reason": "L5 (observed and succeeded): 1,200 files were encrypted by 09:10.",
+        "rank": 1,
+        "score": 25,
+        "sensitivity": {
+          "L": "Critical",
+          "L+1": "Critical",
+          "L-1": "Critical"
+        },
+        "threat": "Ransomware"
+      },
+      {
+        "impact": 5,
+        "impact_reason": "I5: it removes recoverability, turning a recoverable incident into permanent loss.",
+        "level": "Critical",
+        "likelihood": 4,
+        "likelihood_reason": "L4 (attempted, outcome not logged): a deletion attempt at 09:12 against mutable backups, by an attacker who already held the rights it needs.",
+        "rank": 2,
+        "score": 20,
+        "sensitivity": {
+          "L": "Critical",
+          "L+1": "Critical",
+          "L-1": "High"
+        },
+        "threat": "Backup destruction"
+      },
+      {
+        "impact": 4,
+        "impact_reason": "I4: confidentiality loss of research and personal data with legal exposure, but no data destroyed.",
+        "level": "High",
+        "likelihood": 4,
+        "likelihood_reason": "L4 (indirectly evidenced): an outbound connection to an unknown IP (09:13) and a database spike within 2 min (09:15), with no transfer volume logged.",
+        "rank": 4,
+        "score": 16,
+        "sensitivity": {
+          "L": "High",
+          "L+1": "Critical",
+          "L-1": "High"
+        },
+        "threat": "Data exfiltration"
+      },
+      {
+        "impact": 4,
+        "impact_reason": "I4: an enabler of the other threats rather than damage by itself.",
+        "level": "High",
+        "likelihood": 4,
+        "likelihood_reason": "L4 (indirectly evidenced): disabling antivirus and deleting backups both require administrative rights.",
+        "rank": 5,
+        "score": 16,
+        "sensitivity": {
+          "L": "High",
+          "L+1": "Critical",
+          "L-1": "High"
+        },
+        "threat": "Privilege escalation"
+      }
+    ]
+  },
+  "simulation": [
+    {
+      "attacker_access": true,
+      "av_disabled": true,
+      "backup_destroyed": true,
+      "data_loss_fallback_min": null,
+      "data_loss_min": null,
+      "exfiltration_succeeded": true,
+      "files_impacted": 1200,
+      "first_detection": null,
+      "label": "Baseline (as-is)",
+      "recovery_time_min": null,
+      "scenario": "baseline",
+      "stopped_at": null,
+      "stopped_by": null,
+      "timeline": [
+        {
+          "event": "15 failed logins",
+          "note": "no alerting or lockout configured",
+          "status": "executed",
+          "time": "09:01"
+        },
+        {
+          "event": "21 failed logins",
+          "note": "no alerting or lockout configured",
+          "status": "executed",
+          "time": "09:03"
+        },
+        {
+          "event": "Successful login",
+          "note": "password-only login accepted",
+          "status": "executed",
+          "time": "09:04"
+        },
+        {
+          "event": "320 files modified",
+          "note": "320 files affected",
+          "status": "executed",
+          "time": "09:07"
+        },
+        {
+          "event": "CPU usage increased to 95%",
+          "note": "encryption workload; not alerted on its own",
+          "status": "executed",
+          "time": "09:08"
+        },
+        {
+          "event": "1,200 files encrypted",
+          "note": "1,200 files affected",
+          "status": "executed",
+          "time": "09:10"
+        },
+        {
+          "event": "Backup deletion attempt",
+          "note": "mutable backups deleted",
+          "status": "executed",
+          "time": "09:12"
+        },
+        {
+          "event": "Outbound connection to unknown IP",
+          "note": "channel to unknown IP open: data can leave",
+          "status": "executed",
+          "time": "09:13"
+        },
+        {
+          "event": "Database access spike",
+          "note": "research database queried through the compromised server",
+          "status": "executed",
+          "time": "09:15"
+        },
+        {
+          "event": "Antivirus disabled",
+          "note": "antivirus stopped",
+          "status": "executed",
+          "time": "09:18"
+        }
+      ]
+    },
+    {
+      "attacker_access": false,
+      "av_disabled": false,
+      "backup_destroyed": false,
+      "data_loss_fallback_min": 0,
+      "data_loss_min": 0,
+      "exfiltration_succeeded": false,
+      "files_impacted": 0,
+      "first_detection": "09:01",
+      "label": "Hardened",
+      "recovery_time_min": 0,
+      "scenario": "hardened",
+      "stopped_at": "09:01",
+      "stopped_by": "source block after lockout threshold (10 failures/5 min); MFA would independently block the 09:04 login",
+      "timeline": [
+        {
+          "event": "15 failed logins",
+          "note": "brute-force alert: 15 failures within 5 min; lockout threshold reached; source 10.20.4.15 blocked",
+          "status": "detected",
+          "time": "09:01"
+        },
+        {
+          "event": "21 failed logins",
+          "note": "source 10.20.4.15 blocked since 09:01; MFA would also reject a guessed password",
+          "status": "blocked",
+          "time": "09:03"
+        },
+        {
+          "event": "Successful login",
+          "note": "source blocked since 09:01; MFA would independently reject the login",
+          "status": "blocked",
+          "time": "09:04"
+        },
+        {
+          "event": "320 files modified",
+          "note": "attacker never obtained a session",
+          "status": "not reached",
+          "time": "09:07"
+        },
+        {
+          "event": "CPU usage increased to 95%",
+          "note": "attacker never obtained a session",
+          "status": "not reached",
+          "time": "09:08"
+        },
+        {
+          "event": "1,200 files encrypted",
+          "note": "attacker never obtained a session",
+          "status": "not reached",
+          "time": "09:10"
+        },
+        {
+          "event": "Backup deletion attempt",
+          "note": "attacker never obtained a session",
+          "status": "not reached",
+          "time": "09:12"
+        },
+        {
+          "event": "Outbound connection to unknown IP",
+          "note": "attacker never obtained a session",
+          "status": "not reached",
+          "time": "09:13"
+        },
+        {
+          "event": "Database access spike",
+          "note": "attacker never obtained a session",
+          "status": "not reached",
+          "time": "09:15"
+        },
+        {
+          "event": "Antivirus disabled",
+          "note": "attacker never obtained a session",
+          "status": "not reached",
+          "time": "09:18"
+        }
+      ]
+    },
+    {
+      "attacker_access": true,
+      "av_disabled": false,
+      "backup_destroyed": false,
+      "data_loss_fallback_min": 4,
+      "data_loss_min": 1,
+      "exfiltration_succeeded": false,
+      "files_impacted": 320,
+      "first_detection": "09:01",
+      "label": "Assume breach, automated isolation",
+      "recovery_time_min": 24,
+      "scenario": "hardened_assume_breach",
+      "stopped_at": "09:09",
+      "stopped_by": "automated isolation (FIM rate + entropy rule)",
+      "timeline": [
+        {
+          "event": "15 failed logins",
+          "note": "brute-force alert: 15 failures within 5 min; alert not acted on (assume breach)",
+          "status": "detected",
+          "time": "09:01"
+        },
+        {
+          "event": "21 failed logins",
+          "note": "brute-force alert: 36 failures within 5 min; alert not acted on (assume breach)",
+          "status": "detected",
+          "time": "09:03"
+        },
+        {
+          "event": "Successful login",
+          "note": "MFA bypassed (assume breach)",
+          "status": "executed",
+          "time": "09:04"
+        },
+        {
+          "event": "320 files modified",
+          "note": "FIM rate + entropy alert: 320 changes/min ≥ 100; isolation completes at 09:09; 320 files affected",
+          "status": "detected",
+          "time": "09:07"
+        },
+        {
+          "event": "CPU usage increased to 95%",
+          "note": "encryption workload; not alerted on its own",
+          "status": "executed",
+          "time": "09:08"
+        },
+        {
+          "event": "1,200 files encrypted",
+          "note": "RS-01 isolated at 09:09",
+          "status": "contained",
+          "time": "09:10"
+        },
+        {
+          "event": "Backup deletion attempt",
+          "note": "RS-01 isolated at 09:09; independently blocked by object lock (immutable backup)",
+          "status": "contained",
+          "time": "09:12"
+        },
+        {
+          "event": "Outbound connection to unknown IP",
+          "note": "RS-01 isolated at 09:09; independently blocked by egress allow-list",
+          "status": "contained",
+          "time": "09:13"
+        },
+        {
+          "event": "Database access spike",
+          "note": "RS-01 isolated at 09:09",
+          "status": "contained",
+          "time": "09:15"
+        },
+        {
+          "event": "Antivirus disabled",
+          "note": "RS-01 isolated at 09:09; independently blocked by tamper protection",
+          "status": "contained",
+          "time": "09:18"
+        }
+      ]
+    },
+    {
+      "attacker_access": true,
+      "av_disabled": false,
+      "backup_destroyed": false,
+      "data_loss_fallback_min": 4,
+      "data_loss_min": 1,
+      "exfiltration_succeeded": false,
+      "files_impacted": 1200,
+      "first_detection": "09:01",
+      "label": "Assume breach, manual isolation",
+      "recovery_time_min": 24,
+      "scenario": "hardened_manual_isolation",
+      "stopped_at": "09:11",
+      "stopped_by": "automated isolation (FIM rate + entropy rule)",
+      "timeline": [
+        {
+          "event": "15 failed logins",
+          "note": "brute-force alert: 15 failures within 5 min; alert not acted on (assume breach)",
+          "status": "detected",
+          "time": "09:01"
+        },
+        {
+          "event": "21 failed logins",
+          "note": "brute-force alert: 36 failures within 5 min; alert not acted on (assume breach)",
+          "status": "detected",
+          "time": "09:03"
+        },
+        {
+          "event": "Successful login",
+          "note": "MFA bypassed (assume breach)",
+          "status": "executed",
+          "time": "09:04"
+        },
+        {
+          "event": "320 files modified",
+          "note": "FIM rate + entropy alert: 320 changes/min ≥ 100; isolation completes at 09:11; 320 files affected",
+          "status": "detected",
+          "time": "09:07"
+        },
+        {
+          "event": "CPU usage increased to 95%",
+          "note": "encryption workload; not alerted on its own",
+          "status": "executed",
+          "time": "09:08"
+        },
+        {
+          "event": "1,200 files encrypted",
+          "note": "1,200 files affected",
+          "status": "executed",
+          "time": "09:10"
+        },
+        {
+          "event": "Backup deletion attempt",
+          "note": "RS-01 isolated at 09:11; independently blocked by object lock (immutable backup)",
+          "status": "contained",
+          "time": "09:12"
+        },
+        {
+          "event": "Outbound connection to unknown IP",
+          "note": "RS-01 isolated at 09:11; independently blocked by egress allow-list",
+          "status": "contained",
+          "time": "09:13"
+        },
+        {
+          "event": "Database access spike",
+          "note": "RS-01 isolated at 09:11",
+          "status": "contained",
+          "time": "09:15"
+        },
+        {
+          "event": "Antivirus disabled",
+          "note": "RS-01 isolated at 09:11; independently blocked by tamper protection",
+          "status": "contained",
+          "time": "09:18"
+        }
+      ]
+    }
+  ],
+  "tool_version": "1.0.0"
+}

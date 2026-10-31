@@ -1,0 +1,60 @@
+fault4 run log — Assignment 4 (synthetic data)
+run at:        2026-10-31 11:13:43 (UTC+5, Astana)
+python:        3.13.18 on Linux-6.18.44-fc-v185-x86_64-with-glibc2.39
+fault4:        v1.0.0
+git commit:    34e53da
+data sources (SHA-256):
+  Assignment_4_AITU_Security_Resilience_Report_Template.pdf: a1c8c43e799a9f2f31d9b5200f772ab99b37054ad648dbaa6d4770475675e35a
+  anomaly_scores.csv: d50d601682cda1f6bd3ef5381520f215989eea1b3f14402f44bb85f42d272a0d
+  incident_events.csv: b4b3b59765035a9fd853bc643ded10d73fa8a3284bb49c4e34ccad0842d2ed91
+  scenarios.json: 65637ad3a1ba280d3316c94c054c59a757c1a5dd610aba59947064ceeefacd30
+
+Part A — incident classification
+  09:01  reconnaissance        Medium    15 failed logins
+  09:03  credential attack     High      21 failed logins
+  09:04  privilege compromise  Critical  Successful login
+  09:07  data destruction      Critical  320 files modified
+  09:08  data destruction      High      CPU usage increased to 95%
+  09:10  data destruction      Critical  1,200 files encrypted
+  09:12  recovery attack       Critical  Backup deletion attempt
+  09:13  exfiltration          High      Outbound connection to unknown IP
+  09:15  lateral movement      High      Database access spike
+  09:18  persistence           Critical  Antivirus disabled
+  failed logins 36, compromise after 3 min, encryption 6 min after compromise, attack duration 17 min, 8/8 stage categories used
+
+Part B — risk matrix (L x I)
+  #1 Ransomware             5 x 5 = 25  Critical
+  #2 Backup destruction     4 x 5 = 20  Critical
+  #3 Credential compromise  5 x 4 = 20  Critical
+  #4 Data exfiltration      4 x 4 = 16  High
+  #5 Privilege escalation   4 x 4 = 16  High
+
+Part C — architecture coverage
+  coverage gaps: none
+
+Part D — recovery plan
+  1. Detect incident          1 min (by T+1)
+  2. Isolate affected system  1 min (by T+2)
+  3. Preserve evidence        4 min (by T+6, parallel with step 4)
+  4. Activate backup          3 min (by T+5, parallel with step 3)
+  5. Restore services         8 min (by T+13)
+  6. Verify integrity         5 min (by T+18)
+  7. Return to production     2 min (by T+20)
+  estimated recovery time 24 min sequential / 20 min critical path (RTO 30, met: True)
+  worst-case data loss 4 min (RPO 5, met: True); clean points 09:06 (preferred) / 09:03 (fallback)
+
+Part E — AI-assisted detection
+  Login failures       normal 0.10 observed 0.81 delta 0.71 anomaly True
+  File modifications   normal 0.12 observed 0.96 delta 0.84 anomaly True
+  CPU usage            normal 0.20 observed 0.88 delta 0.68 anomaly True
+  Outbound traffic     normal 0.15 observed 0.79 delta 0.64 anomaly True
+  Database requests    normal 0.18 observed 0.91 delta 0.73 anomaly True
+  anomalies 5/5 = 100%; highest priority File modifications (by ratio: Login failures)
+  threshold sensitivity: 0.75->5, 0.80->4, 0.85->3, 0.90->2, 0.95->1
+
+Before/after simulation
+  scenario                    access  stopped  files backup lost  exfil  loss   recovery
+  baseline                    True    -         1200 True         True   unbnd  n/a
+  hardened                    False   09:01        0 False        False  0      0
+  hardened_assume_breach      True    09:09      320 False        False  1      24
+  hardened_manual_isolation   True    09:11     1200 False        False  1      24
