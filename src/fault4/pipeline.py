@@ -258,7 +258,8 @@ def work_period(repo_root: Path = REPO_ROOT) -> Optional[Tuple[str, str]]:
         return None
     if not out:
         return None
-    return _astana(datetime.fromisoformat(out[0])), _astana(datetime.now(timezone.utc))
+    first = out[0][:-1] + "+00:00" if out[0].endswith("Z") else out[0]  # Python 3.9 rejects a "Z" suffix
+    return _astana(datetime.fromisoformat(first)), _astana(datetime.now(timezone.utc))
 
 
 def _report(results: Dict[str, Any], figures: List[Path], args: argparse.Namespace, commit: Optional[str]) -> Path:

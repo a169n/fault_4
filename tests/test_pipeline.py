@@ -60,3 +60,15 @@ def test_git_commit_ignores_regenerated_outputs(tmp_path):
     assert not git_commit(tmp_path).endswith("-dirty")
     (tmp_path / "src" / "m.py").write_text("x = 2\n")  # a real input change
     assert git_commit(tmp_path).endswith("-dirty")
+
+
+def test_work_period_accepts_git_utc_z_suffix(monkeypatch):
+    # Apple git prints UTC commit times as "...Z"; Python 3.9's fromisoformat rejects that suffix.
+    from fault4 import pipeline
+
+    def fake_run(cmd, **kwargs):
+        return subprocess.CompletedProcess(cmd, 0, stdout="2026-10-31T05:43:26Z\n2026-10-31T06:00:00Z\n", stderr="")
+
+    monkeypatch.setattr(pipeline.subprocess, "run", fake_run)
+    start, _ = pipeline.work_period()
+    assert start == "2026-10-31 10:43 (UTC+5, Astana)"
