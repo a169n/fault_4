@@ -1,8 +1,8 @@
 fault4 run log — Assignment 4 (synthetic data)
-run at:        2026-11-01 14:30:34 (UTC+5, Astana)
+run at:        2026-11-01 14:40:59 (UTC+5, Astana)
 python:        3.9.6 on macOS-26.6.2-arm64-arm-64bit
 fault4:        v1.0.0
-git commit:    da4e9ea
+git commit:    2bfecd4
 data sources (SHA-256):
   Assignment_4_AITU_Security_Resilience_Report_Template.pdf: a1c8c43e799a9f2f31d9b5200f772ab99b37054ad648dbaa6d4770475675e35a
   anomaly_scores.csv: d50d601682cda1f6bd3ef5381520f215989eea1b3f14402f44bb85f42d272a0d
