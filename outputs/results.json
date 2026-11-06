@@ -85,8 +85,8 @@
         "name": "Multi-factor authentication",
         "role": "preventive",
         "satisfies": "MFA",
-        "technology": "privacyIDEA TOTP/push via its PAM module on the SSH bastion and its FreeRADIUS plugin on the VPN; administrators additionally use FIDO2 OpenSSH keys (ed25519-sk); per-source-IP lockout at 10 failures / 5 min",
-        "why": "Preventive: stops a guessed password from becoming a session; it would have blocked the 09:04 login.",
+        "technology": "A second login step (a code from a phone app, or a hardware key for administrators) on the entry server and the VPN; the source address is blocked after 10 failed logins in 5 minutes",
+        "why": "Preventive: a guessed password alone no longer opens a session, so the 09:04 login would have failed.",
         "zone": "Access zone"
       },
       {
@@ -94,8 +94,8 @@
         "name": "Network segmentation",
         "role": "preventive",
         "satisfies": "Network segmentation",
-        "technology": "OPNsense firewall, VLANs, default-deny inter-zone rules, egress allow-list proxy, quarantine VLAN",
-        "why": "Preventive by design: 10.20.4.15 reaches RS-01 only through the bastion and unknown egress (09:13) is denied. Its quarantine VLAN is reused for containment in recovery step 2.",
+        "technology": "A firewall splits the network into separate zones; traffic between zones and to the internet is blocked unless explicitly allowed; an infected machine can be moved into a closed quarantine zone",
+        "why": "Preventive: the attacker's computer can reach RS-01 only through the entry server, and the 09:13 connection to an unknown address is blocked.",
         "zone": "All zone boundaries"
       },
       {
@@ -103,8 +103,8 @@
         "name": "Privileged access management",
         "role": "preventive",
         "satisfies": "supporting",
-        "technology": "Just-in-time sudo, separate admin accounts, no standing root, agent tamper protection",
-        "why": "Preventive: backup deletion (09:12) and disabling antivirus (09:18) need a just-in-time approval the attacker does not have.",
+        "technology": "Administrator rights only for a short, approved time window; no permanent administrator account; security software cannot be switched off without approval",
+        "why": "Preventive: deleting backups (09:12) and switching off antivirus (09:18) need an approval the attacker does not have.",
         "zone": "Access zone"
       },
       {
@@ -112,8 +112,8 @@
         "name": "Monitoring / SIEM",
         "role": "detective",
         "satisfies": "Monitoring",
-        "technology": "Wazuh SIEM + Prometheus/Grafana, correlation rules, active response",
-        "why": "Detective: raises the 09:01 and 09:07 alerts. Its active response only orchestrates; the hypervisor, firewall and identity provider carry out the containment.",
+        "technology": "Wazuh SIEM collects logs from all systems, links related events and raises alerts",
+        "why": "Detective: raises the 09:01 and 09:07 alerts. It only gives orders; the hypervisor, firewall and login server carry out the response.",
         "zone": "Security zone"
       },
       {
@@ -121,8 +121,8 @@
         "name": "Intrusion detection",
         "role": "detective",
         "satisfies": "Intrusion detection",
-        "technology": "Suricata NIDS, Wazuh HIDS/FIM with canary files and an extension/entropy check, AI anomaly scorer",
-        "why": "Detective: detects the encryption (09:07) and the unknown outbound connection (09:13).",
+        "technology": "Watches network traffic and file changes, including decoy (canary) files and files that suddenly look encrypted; the AI anomaly score is one more signal",
+        "why": "Detective: notices the encryption (09:07) and the unknown outbound connection (09:13).",
         "zone": "Security zone"
       },
       {
@@ -130,8 +130,8 @@
         "name": "Immutable backup",
         "role": "recovery",
         "satisfies": "Immutable backup",
-        "technology": "Tier 1 (fast restore): ZFS snapshots every 3 min on RS-01, pulled by the vault (zfs send -i | zfs receive, initiated from the vault) into its own pool and held with zfs hold; PostgreSQL WAL pulled continuously by pg_receivewal on the vault plus a nightly base backup. Tier 2 (WORM): restic copies every 15 min into a MinIO bucket with S3 Object Lock in compliance mode (30 days). Production holds no vault credentials",
-        "why": "Recovery against ransomware: it does not stop encryption, but keeps clean restore points out of the attacker's reach. Tier 1 (worst-case loss 4 min) is protected by credential separation and zfs hold; tier 2 is write-once even for a vault administrator.",
+        "technology": "Tier 1: a snapshot every 3 minutes plus a continuous database log, locked so it cannot be deleted. Tier 2: a copy every 15 minutes, write-protected for 30 days. The backup store fetches the copies itself, so the server has no password to it",
+        "why": "Recovery against ransomware: it does not stop encryption, but keeps clean copies out of the attacker's reach. At most 4 minutes of work can be lost.",
         "zone": "Backup vault (pull-only)"
       },
       {
@@ -139,8 +139,8 @@
         "name": "Secure failover",
         "role": "recovery",
         "satisfies": "Secure failover",
-        "technology": "Research-Server-02: warm VM cloned from a golden image, holds no data and waits in the isolated recovery VLAN, out of reach of an attacker in the research VLAN; promoted after verification by re-tagging its vNIC into the research VLAN and switching the service VIP/DNS",
-        "why": "Recovery: restores service on clean infrastructure within the RTO and never receives live-replicated (encrypted) data.",
+        "technology": "Research-Server-02: a spare server built from a clean, checked system image. It holds no data and waits in a separate network; after the check it is promoted to replace RS-01",
+        "why": "Recovery: service comes back on a clean server within the RTO, and the spare never receives the encrypted files.",
         "zone": "Recovery zone (isolated VLAN; moved into the research VLAN on promotion)"
       },
       {
@@ -148,8 +148,8 @@
         "name": "Recovery environment",
         "role": "recovery",
         "satisfies": "Recovery environment",
-        "technology": "Isolated clean-room VLAN without internet access: restore, scan, verify",
-        "why": "Recovery: restored data is verified in isolation before it returns to production.",
+        "technology": "A clean room: a separate network without internet where restored data is scanned and checked",
+        "why": "Recovery: restored data is checked in isolation before it goes back into use.",
         "zone": "Recovery zone (isolated VLAN)"
       },
       {
@@ -157,8 +157,8 @@
         "name": "Virtualisation host (hypervisor)",
         "role": "recovery",
         "satisfies": "supporting",
-        "technology": "VM cluster running RS-01 and RS-02; its API lets Wazuh active response pause a VM, re-tag its vNIC into the quarantine VLAN and take memory + disk snapshots for evidence",
-        "why": "Response point, listed with recovery because the template has no respond column: containment and evidence capture happen here, since VLAN membership is set on the vNIC, not on the firewall.",
+        "technology": "The software that runs RS-01 and RS-02 as virtual machines; on an alert it pauses RS-01, moves it into the quarantine VLAN and saves a copy of its memory and disk as evidence",
+        "why": "Response point. The template has no “respond” column, so it is listed under recovery.",
         "zone": "Research zone (platform)"
       },
       {
@@ -166,8 +166,8 @@
         "name": "Offline copy at a second Kazakhstan site",
         "role": "recovery",
         "satisfies": "Additional",
-        "technology": "Logically air-gapped copy in Almaty (~970 km from Astana): transfer window opened daily from the Almaty side only, monthly rotation to disconnected media, separate admin domain, monthly restore drill; data-loss tier 24 h",
-        "why": "Recovery: last resort that survives compromise of the vault's admin plane or loss of the Astana site.",
+        "technology": "A copy of the backups in Almaty (~970 km from Astana), connected only during a short daily transfer and managed by different administrators; tested by a monthly restore drill",
+        "why": "Recovery: last resort if the backup administrators are compromised or the whole Astana site is lost.",
         "zone": "Second site (Almaty)"
       }
     ],
@@ -179,9 +179,9 @@
           "segmentation",
           "monitoring"
         ],
-        "detective": "SIEM alert at ≥10 failures / 5 min per source; \"success after failures\" correlation",
-        "preventive": "MFA on the bastion and VPN; per-source-IP lockout at 10 failures / 5 min (per IP, not per account, so attackers cannot lock researchers out); SSH unreachable from the user VLAN",
-        "recovery": "Respond: block the source, revoke sessions. Recover: rotate the password, re-enrol MFA, review account activity",
+        "detective": "Alert on many failed logins from one address, and on a successful login right after them",
+        "preventive": "MFA (a second login step); block the source address after 10 failed logins in 5 minutes; remote login only through the entry server",
+        "recovery": "Respond: block the source and end its sessions. Recover: change the password, re-issue MFA, review what the account did",
         "threat": "Credential attack"
       },
       {
@@ -194,9 +194,9 @@
           "failover",
           "recovery_env"
         ],
-        "detective": "Canary-file write (immediate); FIM rate ≥100 changes/min AND extension/entropy change; CPU >90% and AI score used only as correlating signals",
-        "preventive": "Segmentation; least-privilege write access to research shares; noexec on /tmp, /dev/shm and user-writable mounts plus application allow-listing (fapolicyd)",
-        "recovery": "Respond: the hypervisor pauses RS-01 and moves it into the quarantine VLAN. Recover: restore data from the verified clean point onto RS-02, verify it in the clean room, then promote RS-02",
+        "detective": "Alert when a decoy file changes, or when more than 100 files per minute change and start to look encrypted; CPU load and the AI score support the alert",
+        "preventive": "Separate network zones; each account can change only the files it needs; only approved programs may run",
+        "recovery": "Respond: the hypervisor pauses RS-01 and cuts it off the network. Recover: restore the last clean backup onto the spare server RS-02, check it, then switch users to RS-02",
         "threat": "Ransomware"
       },
       {
@@ -206,9 +206,9 @@
           "monitoring",
           "offline_copy"
         ],
-        "detective": "Alert on any delete or retention-change API call, or a failed vault login",
-        "preventive": "Pull-only vault, so production holds no vault credentials; zfs hold on vault snapshots; Object Lock compliance mode on the restic tier; just-in-time admin",
-        "recovery": "Recover: restore from the vault (tier 1, then the Object Lock tier); the offline Almaty copy is the last resort",
+        "detective": "Alert on any attempt to delete backups or shorten how long they are kept, and on failed logins to the backup store",
+        "preventive": "The backup store fetches copies itself, so the server has no password to it; copies are locked against deletion; administrator rights only on approval",
+        "recovery": "Recover: restore from tier 1, then from the locked tier 2 copy; the offline Almaty copy is the last resort",
         "threat": "Backup deletion"
       },
       {
@@ -218,9 +218,9 @@
           "ids",
           "monitoring"
         ],
-        "detective": "Suricata alert on a non-allow-listed destination and on volume anomalies; database query-rate anomaly",
-        "preventive": "Egress default-deny allow-list proxy; least-privilege database roles",
-        "recovery": "Respond: block the destination, revoke database credentials. Recover: scope the leaked records, report to KZ-CERT, and notify the authorised personal-data body and data subjects where Law No. 94-V and university policy require it",
+        "detective": "Alert on connections to unknown addresses, unusually large uploads, and unusually many database queries",
+        "preventive": "Servers may connect only to an approved list of outside addresses; database accounts see only the tables they need",
+        "recovery": "Respond: block the address and change the database passwords. Recover: find out which data left, report to KZ-CERT and notify the people affected as Law No. 94-V requires",
         "threat": "Data exfiltration"
       },
       {
@@ -229,9 +229,9 @@
           "monitoring",
           "recovery_env"
         ],
-        "detective": "Alert on AV/EDR stop, a new admin account, or sudo outside the just-in-time window",
-        "preventive": "Just-in-time admin, no standing root, agent tamper protection",
-        "recovery": "Recover: rebuild the host from a golden image in the clean room; rotate all privileged credentials",
+        "detective": "Alert when antivirus stops, a new administrator account appears, or admin commands run without approval",
+        "preventive": "Administrator rights only for a short approved time; no permanent administrator account; antivirus cannot be switched off",
+        "recovery": "Recover: rebuild the server from a clean system image; change all administrator passwords",
         "threat": "Privilege escalation"
       }
     ]
@@ -383,9 +383,9 @@
     "steps": [
       {
         "action": "Detect incident",
-        "component": "ids + monitoring (canary / FIM + entropy rule, SIEM correlation, AI score)",
+        "component": "Intrusion detection + SIEM (decoy files, mass file changes, AI score)",
         "depends_on": [],
-        "details": "Canary write or FIM rate + entropy rule fires on the 09:07 mass modification; Wazuh correlates it with the 09:01 brute-force alert and the AI score.",
+        "details": "The mass file change at 09:07 triggers the alert; the SIEM links it with the 09:01 failed-login alert and the AI score.",
         "duration_min": 1,
         "finish_min": 1,
         "number": 1,
@@ -393,11 +393,11 @@
       },
       {
         "action": "Isolate affected system",
-        "component": "hypervisor (VM pause, vNIC into the quarantine VLAN) + segmentation (OPNsense deny rule) + privacyIDEA/IdP (account lock), triggered by Wazuh active response",
+        "component": "Hypervisor (pause RS-01, quarantine network) + firewall (block traffic) + login server (lock the account), started automatically by the SIEM",
         "depends_on": [
           1
         ],
-        "details": "Automated: the hypervisor pauses RS-01 (memory preserved) and re-tags its vNIC into the quarantine VLAN, OPNsense blocks 10.20.4.15 and RS-01's address, and privacyIDEA locks the compromised account.",
+        "details": "Automatic: RS-01 is paused with its memory kept and moved into the quarantine network, the attacker's address is blocked, and the stolen account is locked.",
         "duration_min": 1,
         "finish_min": 2,
         "number": 2,
@@ -405,11 +405,11 @@
       },
       {
         "action": "Preserve evidence",
-        "component": "hypervisor (VM memory + disk snapshot) + monitoring (SIEM log export, SHA-256, WORM bucket)",
+        "component": "Hypervisor (copy of memory and disk) + SIEM (logs), stored where they cannot be changed",
         "depends_on": [
           2
         ],
-        "details": "Snapshot the paused VM's memory and disk, export SIEM/FIM/Suricata logs, hash everything with SHA-256 and store it in a write-once bucket.",
+        "details": "Save a copy of RS-01's memory and disk and all logs, record their fingerprints (SHA-256) and store them in write-once storage.",
         "duration_min": 4,
         "finish_min": 6,
         "number": 3,
@@ -417,11 +417,11 @@
       },
       {
         "action": "Activate backup",
-        "component": "immutable_backup (choose the clean point, clone it read-only from the vault ZFS pool into the clean room)",
+        "component": "Immutable backup (choose the clean restore point and open a read-only copy in the clean room)",
         "depends_on": [
           2
         ],
-        "details": "Choose the clean point before restoring: diff the 09:06 snapshot against 09:03 (new executables, authorized_keys or cron entries, changed canaries). Use 09:06 if the diff is clean, otherwise 09:03 (before attacker access), and clone it read-only into the recovery environment.",
+        "details": "Choose the restore point before restoring: compare the 09:06 snapshot with 09:03. Use 09:06 if nothing suspicious was added (new programs, login keys, scheduled tasks), otherwise 09:03, before the attacker logged in.",
         "duration_min": 3,
         "finish_min": 5,
         "number": 4,
@@ -429,11 +429,11 @@
       },
       {
         "action": "Restore services",
-        "component": "failover (RS-02 warm VM from a golden image; data copied from the clean point; PostgreSQL PITR)",
+        "component": "Spare server RS-02 (data copied from the clean point; database rolled back to the same moment)",
         "depends_on": [
           4
         ],
-        "details": "Copy data from the clean point onto RS-02 (assumption: ≤200 GB over 10 GbE ≈ 3 min) and run PostgreSQL point-in-time recovery to the clean point (≤5 min) unless the DB audit log shows an earlier malicious write.",
+        "details": "Copy the data onto RS-02 (about 3 minutes for up to 200 GB) and roll the database back to the clean point (up to 5 minutes).",
         "duration_min": 8,
         "finish_min": 13,
         "number": 5,
@@ -441,11 +441,11 @@
       },
       {
         "action": "Verify integrity",
-        "component": "recovery_env (hash manifest, YARA/AV scan, persistence check, DB consistency, canaries intact)",
+        "component": "Clean room (compare file fingerprints, malware scan, check for back doors and decoy files)",
         "depends_on": [
           5
         ],
-        "details": "Compare file hashes with the clean-point manifest, scan with YARA/AV, confirm no new executables, authorized_keys or cron entries, run DB consistency checks and confirm the canary files are intact.",
+        "details": "Check that files match their fingerprints, scan for malware, confirm the attacker left no way back in, check the database and confirm the decoy files are untouched.",
         "duration_min": 5,
         "finish_min": 18,
         "number": 6,
@@ -453,12 +453,12 @@
       },
       {
         "action": "Return to production",
-        "component": "failover + hypervisor (RS-02 vNIC into the research VLAN, VIP/DNS switch, rotated credentials)",
+        "component": "Spare server + hypervisor (RS-02 joins the research network, users are switched over, passwords changed)",
         "depends_on": [
           3,
           6
         ],
-        "details": "Promote RS-02: re-tag its vNIC from the recovery VLAN into the research VLAN, switch the service VIP/DNS, rotate credentials and keep heightened monitoring; only after the evidence is preserved and integrity is verified.",
+        "details": "Promote RS-02: move it into the research network, point users to it, change passwords and keep closer monitoring. Done only after evidence is saved and the check has passed.",
         "duration_min": 2,
         "finish_min": 20,
         "number": 7,

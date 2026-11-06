@@ -25,56 +25,54 @@ class RecoveryStep:
 RECOVERY_STEPS: Tuple[RecoveryStep, ...] = (
     RecoveryStep(
         1, "Detect incident",
-        "ids + monitoring (canary / FIM + entropy rule, SIEM correlation, AI score)",
+        "Intrusion detection + SIEM (decoy files, mass file changes, AI score)",
         1, (),
-        "Canary write or FIM rate + entropy rule fires on the 09:07 mass modification; Wazuh correlates it with "
-        "the 09:01 brute-force alert and the AI score.",
+        "The mass file change at 09:07 triggers the alert; the SIEM links it with the 09:01 failed-login alert "
+        "and the AI score.",
     ),
     RecoveryStep(
         2, "Isolate affected system",
-        "hypervisor (VM pause, vNIC into the quarantine VLAN) + segmentation (OPNsense deny rule) + "
-        "privacyIDEA/IdP (account lock), triggered by Wazuh active response",
+        "Hypervisor (pause RS-01, quarantine network) + firewall (block traffic) + login server (lock the account), "
+        "started automatically by the SIEM",
         1, (1,),
-        "Automated: the hypervisor pauses RS-01 (memory preserved) and re-tags its vNIC into the quarantine VLAN, "
-        "OPNsense blocks 10.20.4.15 and RS-01's address, and privacyIDEA locks the compromised account.",
+        "Automatic: RS-01 is paused with its memory kept and moved into the quarantine network, the attacker's "
+        "address is blocked, and the stolen account is locked.",
     ),
     RecoveryStep(
         3, "Preserve evidence",
-        "hypervisor (VM memory + disk snapshot) + monitoring (SIEM log export, SHA-256, WORM bucket)",
+        "Hypervisor (copy of memory and disk) + SIEM (logs), stored where they cannot be changed",
         4, (2,),
-        "Snapshot the paused VM's memory and disk, export SIEM/FIM/Suricata logs, hash everything with SHA-256 "
-        "and store it in a write-once bucket.",
+        "Save a copy of RS-01's memory and disk and all logs, record their fingerprints (SHA-256) and store them "
+        "in write-once storage.",
     ),
     RecoveryStep(
         4, "Activate backup",
-        "immutable_backup (choose the clean point, clone it read-only from the vault ZFS pool into the clean room)",
+        "Immutable backup (choose the clean restore point and open a read-only copy in the clean room)",
         3, (2,),
-        "Choose the clean point before restoring: diff the 09:06 snapshot against 09:03 (new executables, "
-        "authorized_keys or cron entries, changed canaries). Use 09:06 if the diff is clean, otherwise 09:03 (before "
-        "attacker access), and clone it read-only into the recovery environment.",
+        "Choose the restore point before restoring: compare the 09:06 snapshot with 09:03. Use 09:06 if nothing "
+        "suspicious was added (new programs, login keys, scheduled tasks), otherwise 09:03, before the attacker "
+        "logged in.",
     ),
     RecoveryStep(
         5, "Restore services",
-        "failover (RS-02 warm VM from a golden image; data copied from the clean point; PostgreSQL PITR)",
+        "Spare server RS-02 (data copied from the clean point; database rolled back to the same moment)",
         8, (4,),
-        "Copy data from the clean point onto RS-02 (assumption: ≤200 GB over 10 GbE ≈ 3 min) and run PostgreSQL "
-        "point-in-time recovery to the clean point (≤5 min) unless the DB audit log shows an earlier malicious "
-        "write.",
+        "Copy the data onto RS-02 (about 3 minutes for up to 200 GB) and roll the database back to the clean "
+        "point (up to 5 minutes).",
     ),
     RecoveryStep(
         6, "Verify integrity",
-        "recovery_env (hash manifest, YARA/AV scan, persistence check, DB consistency, canaries intact)",
+        "Clean room (compare file fingerprints, malware scan, check for back doors and decoy files)",
         5, (5,),
-        "Compare file hashes with the clean-point manifest, scan with YARA/AV, confirm no new executables, "
-        "authorized_keys or cron entries, run DB consistency checks and confirm the canary files are intact.",
+        "Check that files match their fingerprints, scan for malware, confirm the attacker left no way back in, "
+        "check the database and confirm the decoy files are untouched.",
     ),
     RecoveryStep(
         7, "Return to production",
-        "failover + hypervisor (RS-02 vNIC into the research VLAN, VIP/DNS switch, rotated credentials)",
+        "Spare server + hypervisor (RS-02 joins the research network, users are switched over, passwords changed)",
         2, (3, 6),
-        "Promote RS-02: re-tag its vNIC from the recovery VLAN into the research VLAN, switch the service VIP/DNS, "
-        "rotate credentials and keep heightened monitoring; only after the evidence is preserved and integrity is "
-        "verified.",
+        "Promote RS-02: move it into the research network, point users to it, change passwords and keep closer "
+        "monitoring. Done only after evidence is saved and the check has passed.",
     ),
 )
 

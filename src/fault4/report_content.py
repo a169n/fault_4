@@ -182,7 +182,7 @@ FIGURE1_ZONES = (
                       "monitoring: it records every file change). RS-01 is a virtual machine on the hypervisor (the "
                       "software that runs virtual machines), which can pause it and move it into the quarantine "
                       "VLAN (a separate, closed-off virtual network)."),
-    ("Data zone", "the PostgreSQL research database, whose WAL the vault pulls continuously."),
+    ("Data zone", "the PostgreSQL research database; the vault continuously copies its change log, so the database can be rolled back to any moment."),
     ("Security zone", "the intrusion detection system (network monitoring, file monitoring, canary files, AI anomaly "
                       "scoring) feeding the SIEM, which links related alerts and starts the automatic response."),
     ("Backup vault", "pull-only (the vault fetches the copies itself; the servers cannot reach it). Tier 1 keeps "

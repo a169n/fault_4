@@ -40,125 +40,123 @@ class ThreatControls:
 COMPONENTS: Tuple[Component, ...] = (
     Component(
         "mfa", "Multi-factor authentication",
-        "privacyIDEA TOTP/push via its PAM module on the SSH bastion and its FreeRADIUS plugin on the VPN; "
-        "administrators additionally use FIDO2 OpenSSH keys (ed25519-sk); per-source-IP lockout at 10 failures / 5 min",
+        "A second login step (a code from a phone app, or a hardware key for administrators) on the entry server "
+        "and the VPN; the source address is blocked after 10 failed logins in 5 minutes",
         "Access zone", "preventive", "MFA",
-        "Preventive: stops a guessed password from becoming a session; it would have blocked the 09:04 login.",
+        "Preventive: a guessed password alone no longer opens a session, so the 09:04 login would have failed.",
     ),
     Component(
         "segmentation", "Network segmentation",
-        "OPNsense firewall, VLANs, default-deny inter-zone rules, egress allow-list proxy, quarantine VLAN",
+        "A firewall splits the network into separate zones; traffic between zones and to the internet is blocked "
+        "unless explicitly allowed; an infected machine can be moved into a closed quarantine zone",
         "All zone boundaries", "preventive", "Network segmentation",
-        "Preventive by design: 10.20.4.15 reaches RS-01 only through the bastion and unknown egress (09:13) "
-        "is denied. Its quarantine VLAN is reused for containment in recovery step 2.",
+        "Preventive: the attacker's computer can reach RS-01 only through the entry server, and the 09:13 "
+        "connection to an unknown address is blocked.",
     ),
     Component(
         "pam", "Privileged access management",
-        "Just-in-time sudo, separate admin accounts, no standing root, agent tamper protection",
+        "Administrator rights only for a short, approved time window; no permanent administrator account; security "
+        "software cannot be switched off without approval",
         "Access zone", "preventive", "supporting",
-        "Preventive: backup deletion (09:12) and disabling antivirus (09:18) need a just-in-time approval "
-        "the attacker does not have.",
+        "Preventive: deleting backups (09:12) and switching off antivirus (09:18) need an approval the attacker does "
+        "not have.",
     ),
     Component(
         "monitoring", "Monitoring / SIEM",
-        "Wazuh SIEM + Prometheus/Grafana, correlation rules, active response",
+        "Wazuh SIEM collects logs from all systems, links related events and raises alerts",
         "Security zone", "detective", "Monitoring",
-        "Detective: raises the 09:01 and 09:07 alerts. Its active response only orchestrates; the hypervisor, "
-        "firewall and identity provider carry out the containment.",
+        "Detective: raises the 09:01 and 09:07 alerts. It only gives orders; the hypervisor, firewall and login "
+        "server carry out the response.",
     ),
     Component(
         "ids", "Intrusion detection",
-        "Suricata NIDS, Wazuh HIDS/FIM with canary files and an extension/entropy check, AI anomaly scorer",
+        "Watches network traffic and file changes, including decoy (canary) files and files that suddenly look "
+        "encrypted; the AI anomaly score is one more signal",
         "Security zone", "detective", "Intrusion detection",
-        "Detective: detects the encryption (09:07) and the unknown outbound connection (09:13).",
+        "Detective: notices the encryption (09:07) and the unknown outbound connection (09:13).",
     ),
     Component(
         "immutable_backup", "Immutable backup",
-        "Tier 1 (fast restore): ZFS snapshots every 3 min on RS-01, pulled by the vault (zfs send -i | zfs receive, "
-        "initiated from the vault) into its own pool and held with zfs hold; PostgreSQL WAL pulled continuously by "
-        "pg_receivewal on the vault plus a nightly base backup. Tier 2 (WORM): restic copies every 15 min into a "
-        "MinIO bucket with S3 Object Lock in compliance mode (30 days). Production holds no vault credentials",
+        "Tier 1: a snapshot every 3 minutes plus a continuous database log, locked so it cannot be deleted. "
+        "Tier 2: a copy every 15 minutes, write-protected for 30 days. The backup store fetches the copies itself, "
+        "so the server has no password to it",
         "Backup vault (pull-only)", "recovery", "Immutable backup",
-        "Recovery against ransomware: it does not stop encryption, but keeps clean restore points out of the "
-        "attacker's reach. Tier 1 (worst-case loss 4 min) is protected by credential separation and zfs hold; "
-        "tier 2 is write-once even for a vault administrator.",
+        "Recovery against ransomware: it does not stop encryption, but keeps clean copies out of the attacker's "
+        "reach. At most 4 minutes of work can be lost.",
     ),
     Component(
         "failover", "Secure failover",
-        "Research-Server-02: warm VM cloned from a golden image, holds no data and waits in the isolated recovery "
-        "VLAN, out of reach of an attacker in the research VLAN; promoted after verification by re-tagging its vNIC "
-        "into the research VLAN and switching the service VIP/DNS",
+        "Research-Server-02: a spare server built from a clean, checked system image. It holds no data and waits "
+        "in a separate network; after the check it is promoted to replace RS-01",
         "Recovery zone (isolated VLAN; moved into the research VLAN on promotion)", "recovery", "Secure failover",
-        "Recovery: restores service on clean infrastructure within the RTO and never receives live-replicated "
-        "(encrypted) data.",
+        "Recovery: service comes back on a clean server within the RTO, and the spare never receives the "
+        "encrypted files.",
     ),
     Component(
         "recovery_env", "Recovery environment",
-        "Isolated clean-room VLAN without internet access: restore, scan, verify",
+        "A clean room: a separate network without internet where restored data is scanned and checked",
         "Recovery zone (isolated VLAN)", "recovery", "Recovery environment",
-        "Recovery: restored data is verified in isolation before it returns to production.",
+        "Recovery: restored data is checked in isolation before it goes back into use.",
     ),
     Component(
         "hypervisor", "Virtualisation host (hypervisor)",
-        "VM cluster running RS-01 and RS-02; its API lets Wazuh active response pause a VM, re-tag its vNIC into the "
-        "quarantine VLAN and take memory + disk snapshots for evidence",
+        "The software that runs RS-01 and RS-02 as virtual machines; on an alert it pauses RS-01, moves it into the "
+        "quarantine VLAN and saves a copy of its memory and disk as evidence",
         "Research zone (platform)", "recovery", "supporting",
-        "Response point, listed with recovery because the template has no respond column: containment and evidence "
-        "capture happen here, since VLAN membership is set on the vNIC, not on the firewall.",
+        "Response point. The template has no “respond” column, so it is listed under recovery.",
     ),
     Component(
         "offline_copy", "Offline copy at a second Kazakhstan site",
-        "Logically air-gapped copy in Almaty (~970 km from Astana): transfer window opened daily from the "
-        "Almaty side only, monthly rotation to disconnected media, separate admin domain, monthly restore drill; "
-        "data-loss tier 24 h",
+        "A copy of the backups in Almaty (~970 km from Astana), connected only during a short daily transfer and "
+        "managed by different administrators; tested by a monthly restore drill",
         "Second site (Almaty)", "recovery", "Additional",
-        "Recovery: last resort that survives compromise of the vault's admin plane or loss of the Astana site.",
+        "Recovery: last resort if the backup administrators are compromised or the whole Astana site is lost.",
     ),
 )
 
 THREAT_CONTROLS: Tuple[ThreatControls, ...] = (
     ThreatControls(
         "Credential attack",
-        "MFA on the bastion and VPN; per-source-IP lockout at 10 failures / 5 min (per IP, not per account, so "
-        "attackers cannot lock researchers out); SSH unreachable from the user VLAN",
-        "SIEM alert at ≥10 failures / 5 min per source; \"success after failures\" correlation",
-        "Respond: block the source, revoke sessions. Recover: rotate the password, re-enrol MFA, review account "
-        "activity",
+        "MFA (a second login step); block the source address after 10 failed logins in 5 minutes; remote login "
+        "only through the entry server",
+        "Alert on many failed logins from one address, and on a successful login right after them",
+        "Respond: block the source and end its sessions. Recover: change the password, re-issue MFA, review what "
+        "the account did",
         ("mfa", "segmentation", "monitoring"),
     ),
     ThreatControls(
         "Ransomware",
-        "Segmentation; least-privilege write access to research shares; noexec on /tmp, /dev/shm and "
-        "user-writable mounts plus application allow-listing (fapolicyd)",
-        "Canary-file write (immediate); FIM rate ≥100 changes/min AND extension/entropy change; CPU >90% and AI "
-        "score used only as correlating signals",
-        "Respond: the hypervisor pauses RS-01 and moves it into the quarantine VLAN. Recover: restore data from the "
-        "verified clean point onto RS-02, verify it in the clean room, then promote RS-02",
+        "Separate network zones; each account can change only the files it needs; only approved programs may run",
+        "Alert when a decoy file changes, or when more than 100 files per minute change and start to look "
+        "encrypted; CPU load and the AI score support the alert",
+        "Respond: the hypervisor pauses RS-01 and cuts it off the network. Recover: restore the last clean backup "
+        "onto the spare server RS-02, check it, then switch users to RS-02",
         ("segmentation", "pam", "ids", "hypervisor", "immutable_backup", "failover", "recovery_env"),
     ),
     ThreatControls(
         "Backup deletion",
-        "Pull-only vault, so production holds no vault credentials; zfs hold on vault snapshots; Object Lock "
-        "compliance mode on the restic tier; just-in-time admin",
-        "Alert on any delete or retention-change API call, or a failed vault login",
-        "Recover: restore from the vault (tier 1, then the Object Lock tier); the offline Almaty copy is the last "
-        "resort",
+        "The backup store fetches copies itself, so the server has no password to it; copies are locked against "
+        "deletion; administrator rights only on approval",
+        "Alert on any attempt to delete backups or shorten how long they are kept, and on failed logins to the "
+        "backup store",
+        "Recover: restore from tier 1, then from the locked tier 2 copy; the offline Almaty copy is the last resort",
         ("immutable_backup", "pam", "monitoring", "offline_copy"),
     ),
     ThreatControls(
         "Data exfiltration",
-        "Egress default-deny allow-list proxy; least-privilege database roles",
-        "Suricata alert on a non-allow-listed destination and on volume anomalies; database query-rate anomaly",
-        "Respond: block the destination, revoke database credentials. Recover: scope the leaked records, report "
-        "to KZ-CERT, and notify the authorised personal-data body and data subjects where Law No. 94-V and "
-        "university policy require it",
+        "Servers may connect only to an approved list of outside addresses; database accounts see only the tables "
+        "they need",
+        "Alert on connections to unknown addresses, unusually large uploads, and unusually many database queries",
+        "Respond: block the address and change the database passwords. Recover: find out which data left, report "
+        "to KZ-CERT and notify the people affected as Law No. 94-V requires",
         ("segmentation", "pam", "ids", "monitoring"),
     ),
     ThreatControls(
         "Privilege escalation",
-        "Just-in-time admin, no standing root, agent tamper protection",
-        "Alert on AV/EDR stop, a new admin account, or sudo outside the just-in-time window",
-        "Recover: rebuild the host from a golden image in the clean room; rotate all privileged credentials",
+        "Administrator rights only for a short approved time; no permanent administrator account; antivirus cannot "
+        "be switched off",
+        "Alert when antivirus stops, a new administrator account appears, or admin commands run without approval",
+        "Recover: rebuild the server from a clean system image; change all administrator passwords",
         ("pam", "monitoring", "recovery_env"),
     ),
 )
