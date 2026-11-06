@@ -57,11 +57,6 @@ def _save(fig: "plt.Figure", path: Path) -> Path:
     return path
 
 
-def _minute(hhmm: str) -> int:
-    hours, minutes = hhmm.split(":")
-    return int(hours) * 60 + int(minutes)
-
-
 # ----------------------------------------------------------------------------------------------- architecture
 
 def _zone(ax, x: float, y: float, w: float, h: float, title: str) -> None:
@@ -180,49 +175,6 @@ def render_architecture(results: Dict[str, Any], path: Path) -> Path:
         ax.text(x + 3.8, -7.0, label, fontsize=7.6, color=TEXT, va="center")
     ax.text(80, -7.0, "✕", fontsize=11, fontweight="bold", color=blocked, va="center")
     ax.text(82.5, -7.0, "blocked by a control", fontsize=7.6, color=TEXT, va="center")
-    return _save(fig, path)
-
-
-# ----------------------------------------------------------------------------------------------- attack timeline
-
-def render_attack_timeline(results: Dict[str, Any], path: Path) -> Path:
-    events = results["incident"]["events"]
-    n = len(events)
-    fig, ax = plt.subplots(figsize=(10, 4.9))
-    for i, e in enumerate(events):
-        y = n - 1 - i
-        x = _minute(e["time"])
-        ax.plot([539.5, x], [y, y], color=GRID, linewidth=0.8, zorder=1)
-        ax.scatter([x], [y], s=75, color=LEVEL_COLOR[e["risk"]], edgecolor=SURFACE, linewidth=1.5, zorder=3)
-        ax.annotate(f"{e['stage']}  ·  {e['risk']}", (x, y), xytext=(8, 0), textcoords="offset points",
-                    va="center", fontsize=7.6, color=TEXT)
-    markers = {r["scenario"]: r["stopped_at"] for r in results["simulation"]}
-    for key, label, style, side in (("hardened", "hardened:\nstopped", "-", "left"),
-                                    ("hardened_assume_breach", "assume breach:\nisolated", "--", "right"),
-                                    ("hardened_manual_isolation", "manual:\nisolated", ":", "left")):
-        if markers.get(key):
-            x = _minute(markers[key])
-            ax.axvline(x, color=TEXT_2, linestyle=style, linewidth=1.1, zorder=2)
-            dx = 0.15 if side == "left" else -0.15
-            ax.text(x + dx, n - 0.35, f"{label} {markers[key]}", ha=side, va="bottom", fontsize=7, color=TEXT_2)
-    ax.set_yticks(range(n))
-    ax.set_yticklabels([f"{e['time']}  {e['event']}" for e in reversed(events)])
-    ticks = list(range(540, 561, 2))
-    ax.set_xticks(ticks)
-    ax.set_xticklabels([f"{t // 60:02d}:{t % 60:02d}" for t in ticks])
-    ax.set_xlim(539.5, 566)
-    ax.set_ylim(-0.7, n + 0.6)
-    ax.grid(axis="x", color=GRID, linewidth=0.6)
-    ax.set_axisbelow(True)
-    for side in ("top", "right"):
-        ax.spines[side].set_visible(False)
-    ax.tick_params(axis="y", length=0)
-    ax.set_title("Attack timeline: stage and assessed risk per event, with simulated containment times", loc="left",
-                 pad=28)
-    handles = [plt.Line2D([], [], marker="o", linestyle="", markersize=7, color=LEVEL_COLOR[k], label=k)
-               for k in ("Medium", "High", "Critical")]
-    ax.legend(handles=handles, title="assessed risk", loc="lower right", fontsize=7.5, title_fontsize=7.5,
-              frameon=False)
     return _save(fig, path)
 
 
@@ -349,7 +301,6 @@ def render_all(results: Dict[str, Any], out_dir: Path = OUTPUT_DIR / "figures") 
     out_dir.mkdir(parents=True, exist_ok=True)
     return [
         render_architecture(results, out_dir / "architecture.png"),
-        render_attack_timeline(results, out_dir / "attack_timeline.png"),
         render_risk_matrix(results, out_dir / "risk_matrix.png"),
         render_anomaly_scores(results, out_dir / "anomaly_scores.png"),
         render_recovery_timeline(results, out_dir / "recovery_timeline.png"),

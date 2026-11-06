@@ -73,7 +73,7 @@ def test_report_has_no_placeholder_leaks(doc):
 def test_report_images_fit_page(doc):
     s = doc.sections[0]
     text_w = s.page_width - s.left_margin - s.right_margin
-    assert len(doc.inline_shapes) == 5 and all(sh.width <= text_w for sh in doc.inline_shapes)
+    assert len(doc.inline_shapes) == 4 and all(sh.width <= text_w for sh in doc.inline_shapes)
 
 
 def test_figure1_is_described_zone_by_zone(doc):
@@ -98,3 +98,24 @@ def test_table_headers_repeat_and_rows_do_not_split(doc):
     for table in doc.tables:
         assert table.rows[0]._tr.trPr is not None and table.rows[0]._tr.trPr.find(qn("w:tblHeader")) is not None
         assert all(r._tr.trPr is not None and r._tr.trPr.find(qn("w:cantSplit")) is not None for r in table.rows)
+
+
+def test_attack_timeline_figure_removed(doc):
+    t = full_text(doc)
+    assert "Attack timeline" not in t and "Figure 5" not in t
+    assert "Figure 4. Risk matrix" in t
+
+
+def test_glossary_defines_key_terms(doc):
+    tables = [tb for tb in doc.tables if tuple(c.text for c in tb.rows[0].cells) == ("Term", "Meaning in plain words")]
+    assert len(tables) == 1
+    terms = {r.cells[0].text.split(" (")[0] for r in tables[0].rows[1:]}
+    for term in ("MFA", "RPO", "RTO", "Immutable backup", "SIEM", "Ransomware", "Lateral movement", "MITRE ATT&CK",
+                 "Critical path", "Clean restore point", "Assume breach", "Defense in depth", "Anomaly score"):
+        assert term in terms, term
+    assert len(terms) >= 40
+
+
+def test_every_part_opens_in_plain_words(doc):
+    starts = [p.text for p in doc.paragraphs if p.text.startswith("In plain words: ")]
+    assert len(starts) == 6  # Parts A-E and the simulation

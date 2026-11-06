@@ -155,6 +155,7 @@ def build_report(
     _setup(doc)
     student = rc.STUDENT
     texts = rc.section_texts(results)
+    plain = rc.plain_summaries(results)
 
     # ------------------------------------------------------------------ title
     doc.add_heading(rc.TITLE, level=0)
@@ -164,6 +165,10 @@ def build_report(
     _para(doc, "Astana IT University | Fault Tolerance | Academic Year 2026–2027", italic=True)
     _para(doc, rc.CONTEXT_NOTE, italic=True, size=9)
 
+    doc.add_heading("Key terms in plain words", level=2)
+    _para(doc, rc.GLOSSARY_INTRO)
+    _table(doc, ("Term", "Meaning in plain words"), sorted(rc.GLOSSARY, key=lambda t: t[0].casefold()), (1.9, 4.6))
+
     doc.add_heading("Incident dataset (synthetic)", level=2)
     events = results["incident"]["events"]
     _table(doc, ("Time", "Event", "Source", "Severity"),
@@ -171,6 +176,7 @@ def build_report(
 
     # ------------------------------------------------------------------ Part A
     doc.add_heading("Part A — Incident Analysis", level=1)
+    _labelled(doc, "In plain words: ", plain["A"])
     _para(doc, rc.PART_INTROS["A"])
     _table(doc, ("Time", "Event", "Attack stage", "Evidence", "Risk"), [
         (e["time"], e["event"], e["stage"],
@@ -187,6 +193,7 @@ def build_report(
 
     # ------------------------------------------------------------------ Part B
     doc.add_heading("Part B — Risk Matrix", level=1)
+    _labelled(doc, "In plain words: ", plain["B"])
     _para(doc, rc.PART_INTROS["B"])
     threats = results["risk"]["threats"]
     _table(doc, ("Threat", "Likelihood", "Impact", "Risk Score", "Priority"),
@@ -198,13 +205,14 @@ def build_report(
          " / ".join(t["sensitivity"][k] for k in ("L-1", "L", "L+1")))
         for t in threats
     ], (1.2, 2.5, 1.9, 0.9))
-    _labelled(doc, "Implementation order. ", "Risk rank and implementation order are separate decisions. MFA is "
-                                             "deployed first because it removes the root cause (credential compromise); "
-                                             "immutable backup second because it is the only control that still "
-                                             "guarantees recovery when every preventive layer fails.")
+    _labelled(doc, "Implementation order. ", "What to fix first is a separate choice from the risk rank. MFA comes "
+                                             "first because it removes the cause (a guessed password was enough to get "
+                                             "in); immutable backup comes second because it still saves the data when "
+                                             "every other layer fails.")
 
     # ------------------------------------------------------------------ Part C
     doc.add_heading("Part C — Resilient Security Architecture", level=1)
+    _labelled(doc, "In plain words: ", plain["C"])
     _para(doc, rc.PART_INTROS["C"])
     _table(doc, ("Threat", "Preventive control", "Detection control", "Recovery control"),
            [(t["threat"], t["preventive"], t["detective"], t["recovery"]) for t in results["controls"]["threat_controls"]],
@@ -228,29 +236,33 @@ def build_report(
 
     # ------------------------------------------------------------------ Part D
     doc.add_heading("Part D — Recovery Plan", level=1)
+    _labelled(doc, "In plain words: ", plain["D"])
     _para(doc, rc.PART_INTROS["D"])
     _table(doc, ("Step", "Action", "Responsible component", "Target time"),
            [(s["number"], s["action"], s["component"], s["target_time"]) for s in results["recovery"]["steps"]],
            (0.5, 1.4, 3.0, 1.6))
     check = results["recovery"]["check"]
     points = results["recovery"]["clean_points"]
-    _labelled(doc, "RTO. ", f"Sequential estimate {check['recovery_time_sequential']} min, critical path "
-                             f"{check['recovery_time_critical_path']} min (steps 1→2→4→5→6→7; evidence preservation runs "
-                             "alongside steps 4–5 because restoring onto RS-02 does not touch RS-01), both ≤ RTO "
-                             f"{check['rto_target']} min; slack {check['slack_min']} min.")
-    _labelled(doc, "RPO. ", f"Snapshots every {results['recovery']['snapshot_interval_min']} min (aligned to 09:00) + "
-                             f"{results['recovery']['replication_lag_min']} min replication lag = "
-                             f"{check['worst_case_data_loss']} min worst-case data loss ≤ RPO {check['rpo_target']} min. "
-                             f"Clean-point rule, decided in step 4 before the restore: {points['preferred']} (last "
-                             "snapshot before the first malicious change at 09:07) if its diff against "
-                             f"{points['fallback']} is clean, otherwise {points['fallback']} (before attacker access at "
-                             "09:04): 1 or 4 min of data loss. The fallback's loss grows with the attacker's dwell time.")
+    _labelled(doc, "RTO. ", f"Estimated recovery time {check['recovery_time_sequential']} min if every step waits for "
+                             f"the previous one, {check['recovery_time_critical_path']} min on the critical path (steps "
+                             "1→2→4→5→6→7; evidence is collected at the same time as steps 4–5, because restoring onto "
+                             f"RS-02 does not touch RS-01). Both are within the {check['rto_target']}-minute target, with "
+                             f"{check['slack_min']} min to spare.")
+    _labelled(doc, "RPO. ", f"Snapshots every {results['recovery']['snapshot_interval_min']} min (starting at 09:00) + "
+                             f"{results['recovery']['replication_lag_min']} min delay before they reach the vault = "
+                             f"{check['worst_case_data_loss']} min worst-case data loss, within the "
+                             f"{check['rpo_target']}-minute target. The restore point is chosen in step 4, before "
+                             f"restoring: {points['preferred']} (the last snapshot before the first harmful change at "
+                             f"09:07) if it shows no unexpected changes compared with {points['fallback']}, otherwise "
+                             f"{points['fallback']} (before the attacker logged in at 09:04). That means 1 or 4 min of "
+                             "lost work. With the fallback point, the loss grows with how long the attacker was inside.")
     for s in results["recovery"]["steps"]:
         _labelled(doc, f"Step {s['number']}. ", s["details"], style="List Bullet")
     _figure(doc, figs, "recovery_timeline.png")
 
     # ------------------------------------------------------------------ Part E
     doc.add_heading("Part E — AI-Assisted Detection", level=1)
+    _labelled(doc, "In plain words: ", plain["E"])
     threshold = results["anomaly"]["threshold"]
     _table(doc, ("Event", "Normal score", "Observed score", "Delta", f"Anomaly (score ≥ {threshold:.2f})"), [
         (s["name"], f"{s['normal']:.2f}", f"{s['observed']:.2f}", f"{s['delta']:.2f}", _yes_no(s["is_anomaly"]))
@@ -265,17 +277,17 @@ def build_report(
 
     # ------------------------------------------------------------------ simulation + conclusion
     doc.add_heading("Before/After Simulation", level=1)
+    _labelled(doc, "In plain words: ", plain["simulation"])
     _para(doc, "The same ten events are replayed against the as-is system and against the proposed architecture "
                "(src/fault4/simulation.py, configs/scenarios.json). Assumptions:")
     for item in rc.simulation_assumptions():
         _para(doc, item, style="List Bullet")
     header, rows = _simulation_rows(results)
     _table(doc, header, rows, (1.7, 1.2, 1.2, 1.2, 1.2))
-    _para(doc, f"With automated isolation the impact drops from 1,200 to 320 files ({rc.reduction_percent(results)} "
-               "fewer). With manual isolation all 1,200 files are hit, but the data still comes back within RPO and RTO "
-               "because the backups were immutable: automation limits the blast radius, immutability guarantees "
-               "recoverability.")
-    _figure(doc, figs, "attack_timeline.png")
+    _para(doc, f"With automatic isolation the damage drops from 1,200 to 320 files ({rc.reduction_percent(results)} "
+               "fewer). With manual isolation all 1,200 files are hit, but the data still comes back within the RPO and "
+               "RTO targets because the backups could not be deleted. Automation limits how much is damaged; locked "
+               "backups make sure it can always be restored.")
     doc.add_heading("Conclusion", level=1)
     _para(doc, rc.conclusion(results))
 

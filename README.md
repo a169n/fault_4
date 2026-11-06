@@ -42,7 +42,7 @@ PYTHONPATH=src .venv/bin/python -m fault4 report --submission-date 2026-11-07
 
 | Assignment part | Code | Output |
 |---|---|---|
-| A — Incident analysis | `src/fault4/incident.py` | Part A table, `attack_timeline.png` |
+| A — Incident analysis | `src/fault4/incident.py` | Part A table |
 | B — Risk matrix | `src/fault4/risk.py` | Part B tables, `risk_matrix.png` |
 | C — Resilient architecture | `src/fault4/controls.py` | Part C tables, `architecture.png` |
 | D — Recovery plan | `src/fault4/recovery.py` | Part D table, `recovery_timeline.png` |
