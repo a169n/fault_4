@@ -171,19 +171,24 @@ FIGURE1_INTRO = (
 FIGURE1_ZONES = (
     ("User VLAN 10.20.4.0/24", "the campus network the attack came from (attacker host 10.20.4.15); it has no direct "
                                "route to the research servers."),
-    ("Internet", "the destination of the 09:13 outbound connection, reachable only through the egress allow-list."),
+    ("Internet", "the destination of the 09:13 outbound connection, reachable only through the egress allow-list (the "
+                 "list of the only outside addresses the servers may contact)."),
     ("Segmentation boundary", "OPNsense firewall and VLAN switching: default-deny between zones, egress allow-list, "
                               "quarantine VLAN. Every arrow crossing it is an explicitly allowed or blocked path."),
-    ("Access zone", "the SSH bastion and VPN with MFA, the only way into the research zone, and privileged access "
-                    "management (just-in-time sudo, tamper protection)."),
-    ("Research zone", "RS-01 with its canary files and FIM agent, running as a VM on the hypervisor that performs "
-                      "containment."),
+    ("Access zone", "the SSH bastion (the single, well-guarded entry server) and VPN with MFA, the only way into the "
+                    "research zone, and privileged access management (administrator rights only for a short, approved "
+                    "time; security agents cannot be switched off)."),
+    ("Research zone", "RS-01 with its canary files (decoy files nobody should touch) and FIM agent (file integrity "
+                      "monitoring: it records every file change). RS-01 is a virtual machine on the hypervisor (the "
+                      "software that runs virtual machines), which can pause it and move it into the quarantine "
+                      "VLAN (a separate, closed-off virtual network)."),
     ("Data zone", "the PostgreSQL research database, whose WAL the vault pulls continuously."),
     ("Security zone", "the intrusion detection system (network monitoring, file monitoring, canary files, AI anomaly "
                       "scoring) feeding the SIEM, which links related alerts and starts the automatic response."),
-    ("Backup vault", "it fetches the copies itself. Tier 1 keeps snapshots of RS-01 every 3 min that cannot be deleted "
-                     "while held; tier 2 keeps locked copies every 15 min. The production servers have no password "
-                     "for the vault."),
+    ("Backup vault", "pull-only (the vault fetches the copies itself; the servers cannot reach it). Tier 1 keeps "
+                     "snapshots of RS-01 every 3 min under zfs hold (a lock that stops a snapshot from being "
+                     "deleted); tier 2 keeps copies every 15 min under Object Lock (a storage setting that blocks "
+                     "deletion until a set date, even for administrators)."),
     ("Recovery zone", "a separate network without internet: the clean room where restored data is scanned and checked, "
                       "and the RS-02 spare server, which joins the research network only after the check."),
     ("Second site (Almaty)", "the offline copy, refreshed in a daily transfer window opened from the Almaty side."),
@@ -206,111 +211,6 @@ FIGURE_CAPTIONS = {
     "risk_matrix.png": "Figure 4. Risk matrix (Risk = Likelihood × Impact).",
 }
 
-GLOSSARY_INTRO = (
-    "The report uses a number of security terms. Each one is explained here in plain words, so the rest of the "
-    "report can be read without a security background."
-)
-GLOSSARY: Tuple[Tuple[str, str], ...] = (
-    ("Anomaly score", "A number from 0 to 1 that an AI model gives a signal to show how unusual it is compared with "
-                      "normal. Here a score of 0.75 or more counts as an anomaly."),
-    ("Assume breach", "A way to test a design: pretend the attacker is already inside and check whether detection and "
-                      "recovery still limit the damage."),
-    ("Attack stage", "One step of an attack, such as getting in, doing damage or covering tracks. The assignment gives "
-                     "eight stages to choose from."),
-    ("Bastion (jump host)", "The single, well-protected server through which administrators reach the internal "
-                            "servers. MFA, lockout and logging sit on it."),
-    ("Brute force", "Guessing a password by trying many options until one works."),
-    ("C2 (command and control)", "The connection an attacker uses to send orders to a computer they have taken over."),
-    ("Canary file", "A decoy file that nobody should ever touch. Any change to it is a strong sign of an attack."),
-    ("Clean restore point", "The last backup made before the attack, so it contains no damage. Here 09:06, or 09:03 "
-                            "as a fallback."),
-    ("Clean room (recovery environment)", "A separate network with no internet access where restored data is checked "
-                                          "before it goes back into use."),
-    ("Critical path", "The longest chain of steps that must happen one after another. It sets the total recovery time "
-                      "(20 minutes here)."),
-    ("Defense in depth", "Several independent layers of protection, so that one failing layer does not mean the "
-                         "attacker wins."),
-    ("Default-deny", "A rule style where everything that is not explicitly allowed is blocked."),
-    ("Detective control", "A control that notices an attack while it happens and raises an alert."),
-    ("Double extortion", "Encrypting the victim's data and also stealing it, then threatening to publish it."),
-    ("EDR (endpoint detection and response)", "Software on a computer that watches what programs do and can stop "
-                                              "suspicious behaviour."),
-    ("Egress filtering", "Rules that decide which outside addresses a server may connect to. Here only an approved "
-                         "list is allowed."),
-    ("Entropy", "A measure of how random data looks. Encrypted files look almost completely random, which tells "
-                "encryption apart from normal editing."),
-    ("Estimated recovery time", "How long the recovery plan is expected to take. It is an estimate, not a measured "
-                                "result."),
-    ("Exfiltration", "Copying stolen data out of the organisation's network."),
-    ("Failover", "Moving a service from a failed server to a spare one."),
-    ("FIM (file integrity monitoring)", "Watching files and recording when they are created, changed or deleted."),
-    ("Firewall", "A device that checks network traffic and lets through only what its rules allow. Here OPNsense."),
-    ("Golden image", "A prepared and checked copy of a server's system, used to build a clean server quickly."),
-    ("Hash (SHA-256)", "A short fingerprint calculated from a file. If even one bit of the file changes, the "
-                       "fingerprint changes."),
-    ("Hypervisor", "The software that runs virtual machines. It can pause a machine, move it to another network and "
-                   "take snapshots of it."),
-    ("IDS (intrusion detection system)", "A system that watches network traffic or a single computer for signs of "
-                                         "attack. It raises alerts but does not block."),
-    ("Immutable backup", "A backup copy that cannot be changed or deleted until its keep-until date, not even by an "
-                         "administrator."),
-    ("Impact", "How much damage a threat would cause, scored from 1 to 5."),
-    ("Just-in-time access", "Administrator rights given for a short, approved time window and then taken away "
-                            "automatically."),
-    ("KZ-CERT", "Kazakhstan's national computer emergency response team, to which cyber incidents are reported."),
-    ("Lateral movement", "Moving from one captured computer to other computers inside the same network."),
-    ("Law No. 94-V", "The Kazakhstan law on personal data. Its Article 12 requires databases with personal data to be "
-                     "stored inside Kazakhstan."),
-    ("Least privilege", "Giving each account only the rights it really needs to do its job."),
-    ("Likelihood", "How probable a threat is, scored from 1 to 5. Here it is based on what the log shows."),
-    ("Live replication", "Copying every change to a spare server as it happens. Not used here, because it would also "
-                         "copy the encrypted files."),
-    ("Lockout", "An automatic block after too many failed logins. Here: 10 failures within 5 minutes blocks the "
-                "source address."),
-    ("MFA (multi-factor authentication)", "A login that needs something you know (a password) and something you have "
-                                          "(a code from a phone app or a hardware key). A guessed password alone is "
-                                          "not enough."),
-    ("MITRE ATT&CK", "A public catalogue of real attacker behaviour. A tactic (ID TA…) is the goal of a step; a "
-                     "technique (ID T…) is how the attacker reaches it."),
-    ("Object Lock", "A storage setting that forbids deleting or changing a saved copy before a set date. In "
-                    "compliance mode nobody can lift it."),
-    ("Offline copy (air gap)", "A backup copy that is disconnected from the network most of the time, so it cannot "
-                               "be reached remotely."),
-    ("PAM (privileged access management)", "Control over who gets administrator rights, when and for how long, with "
-                                           "approval and a record of use."),
-    ("Persistence", "Actions that let an attacker keep access after a restart or a password change."),
-    ("Preventive control", "A control that stops an attack from succeeding in the first place."),
-    ("Privilege escalation", "Gaining more rights than the account started with, for example administrator rights."),
-    ("Pull-only backup", "The backup store fetches the copies itself. The server has no access to the store, so a "
-                         "captured server cannot delete its backups."),
-    ("Quarantine network", "A separate network zone with no access to anything else, where an infected machine is "
-                           "moved."),
-    ("Ransomware", "Malicious software that encrypts data and demands payment for the key."),
-    ("Reconnaissance", "Gathering information about a target before attacking it."),
-    ("Recovery control", "A control that brings systems and data back after damage."),
-    ("Replication lag", "The delay between a change and its arrival in the backup store (1 minute here)."),
-    ("Risk score", "Likelihood × Impact. 1–4 is Low, 5–9 Medium, 10–16 High and 17–25 Critical."),
-    ("RPO (recovery point objective)", "The target for how much data, measured in minutes of work, may be lost. "
-                                       "Here at most 5 minutes."),
-    ("RTO (recovery time objective)", "The target for how long the service may be down. Here at most 30 minutes."),
-    ("Segmentation", "Dividing the network into separate zones with rules between them, so breaking into one zone "
-                     "does not open the others."),
-    ("SIEM (security information and event management)", "A system that collects logs from everywhere, links related "
-                                                         "events and raises alerts. Here Wazuh."),
-    ("Snapshot", "An instant picture of a disk at one moment, which can be restored later."),
-    ("Spare server (warm standby)", "A second server that is already running and waiting to take over. Here RS-02."),
-    ("SSH", "The standard way to log in to a server remotely and type commands. The attacker guessed an SSH password."),
-    ("Threshold", "The cut-off value at or above which a score is treated as an anomaly (0.75 here)."),
-    ("Vault", "The separate, protected store that holds the backups."),
-    ("Virtual machine (VM)", "A computer simulated in software on a physical host. RS-01 and RS-02 are virtual "
-                             "machines."),
-    ("VLAN", "A separate logical network on shared network hardware. VLANs are how the zones are built."),
-    ("WORM (write once, read many)", "Storage that can be written once and afterwards only read. Evidence is kept "
-                                     "there so it cannot be altered."),
-    ("Worst-case data loss", "The most work, in minutes, that the backup design can lose: here 3 + 1 = 4 minutes."),
-)
-
-
 def plain_summaries(results: Dict[str, Any]) -> Dict[str, str]:
     """One short, non-technical paragraph per part; the details follow in the tables."""
     m = results["incident"]["metrics"]
@@ -325,24 +225,35 @@ def plain_summaries(results: Dict[str, Any]) -> Dict[str, str]:
             f"The log shows one attacker who guessed a password, logged in, encrypted the research files, tried to "
             f"delete the backups, opened a connection to the outside and switched off the antivirus, all within "
             f"{m['attack_duration_minutes']} minutes. The table names the attack stage of each event, the evidence for "
-            "that choice and how serious the event is."
+            "that choice and how serious the event is. Each event is also matched to MITRE ATT&CK (a public catalogue "
+            "of known attacker techniques). The 09:15 database spike counts as lateral movement (moving from one "
+            "captured computer to others in the same network)."
         ),
         "B": (
             "Each threat gets two scores from 1 to 5: how likely it is and how much damage it would do. Multiplying "
             f"them gives the risk score. Ransomware scores highest ({ransomware['score']}) because it happened and "
-            "destroyed data. Backup destruction and a stolen password follow with 20 each."
+            "destroyed data. Backup destruction and credential compromise (a guessed or stolen password) follow with "
+            "20 each."
         ),
         "C": (
             "The design surrounds the research server with several independent layers. Some layers stop the attack "
             "(preventive), some notice it (detective) and some bring the system back (recovery). Every threat is "
-            "covered by all three kinds, so the attacker has to defeat more than one layer to win."
+            "covered by all three kinds, so the attacker has to defeat more than one layer to win. The main parts are "
+            "MFA (multi-factor authentication: a second login step, such as a code from a phone app), network "
+            "segmentation (splitting the network into separate zones), an immutable backup (a copy that cannot be "
+            "changed or deleted), a SIEM (a system that collects logs and raises alerts), an IDS (intrusion detection "
+            "system: it watches traffic and files for signs of attack), failover (switching to a spare server) and a "
+            "clean room (an isolated network where restored data is checked)."
         ),
         "D": (
             "If an attack still gets through, the plan brings the service back in seven steps. The estimated recovery "
-            f"time is {check['recovery_time_critical_path']} minutes when steps that can overlap do overlap "
+            f"time is {check['recovery_time_critical_path']} minutes on the critical path (the longest chain of steps "
+            "that cannot overlap) "
             f"({check['recovery_time_sequential']} minutes one after another), within the {check['rto_target']}-minute "
-            f"target. Backups are taken every {interval} minutes and arrive {lag} minute later, so the worst-case data "
-            f"loss is {check['worst_case_data_loss']} minutes of work, within the {check['rpo_target']}-minute target."
+            "RTO (recovery time objective: how long the service may be down). Snapshots (instant copies of the disk) "
+            f"are taken every {interval} minutes and arrive {lag} minute later, so the worst-case data loss is "
+            f"{check['worst_case_data_loss']} minutes of work, within the {check['rpo_target']}-minute RPO (recovery "
+            "point objective: how much recent work may be lost)."
         ),
         "E": (
             f"An AI model scored each signal from 0 to 1. All {summary['total']} scored at or above the "
@@ -354,7 +265,8 @@ def plain_summaries(results: Dict[str, Any]) -> Dict[str, str]:
         "simulation": (
             "The same ten events were replayed against the current setup and against the new design. Without "
             "protection, 1,200 files are lost together with the backups. With the new design, the attack is stopped at "
-            "the first warning. Even if the attacker gets past the login protection, automatic isolation limits the "
+            "the first warning. In the assume-breach runs (pretending the attacker has already got in), automatic "
+            "isolation (cutting the server off the network) limits the "
             f"damage to {breach['files_impacted']} files and the backups survive."
         ),
     }
@@ -405,7 +317,8 @@ def part_e_answers(results: Dict[str, Any]) -> List[str]:
         "Normal behaviour also shifts over the semester and exam periods. Fixed rules (MFA, locked backups, blocked "
         "outgoing connections) keep working when detection fails and are easy to audit, so AI should sit on top of "
         "them to sort and link alerts.",
-        "An offline copy of the backup vault at a second site in Kazakhstan (Almaty, about 970 km from Astana), "
+        "An offline copy (kept disconnected from the network most of the time) of the backup vault at a second site "
+        "in Kazakhstan (Almaty, about 970 km from Astana), "
         "updated in a daily transfer window and checked by a monthly test restore (see section 6).",
     ]
 

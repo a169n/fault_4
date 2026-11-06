@@ -106,14 +106,14 @@ def test_attack_timeline_figure_removed(doc):
     assert "Figure 4. Risk matrix" in t
 
 
-def test_glossary_defines_key_terms(doc):
-    tables = [tb for tb in doc.tables if tuple(c.text for c in tb.rows[0].cells) == ("Term", "Meaning in plain words")]
-    assert len(tables) == 1
-    terms = {r.cells[0].text.split(" (")[0] for r in tables[0].rows[1:]}
-    for term in ("MFA", "RPO", "RTO", "Immutable backup", "SIEM", "Ransomware", "Lateral movement", "MITRE ATT&CK",
-                 "Critical path", "Clean restore point", "Assume breach", "Defense in depth", "Anomaly score"):
-        assert term in terms, term
-    assert len(terms) >= 40
+def test_hard_terms_are_explained_in_brackets_not_a_glossary(doc):
+    assert not any(tb.rows[0].cells[0].text == "Term" for tb in doc.tables)
+    t = full_text(doc)
+    for term in ("MITRE ATT&CK (", "lateral movement (", "MFA (multi-factor authentication:", "immutable backup (",
+                 "SIEM (", "IDS (intrusion detection system:", "critical path (", "RTO (recovery time objective:",
+                 "RPO (recovery point objective:", "assume-breach runs (", "hypervisor (", "Object Lock (",
+                 "bastion (", "canary files ("):
+        assert term in t, term
 
 
 def test_every_part_opens_in_plain_words(doc):

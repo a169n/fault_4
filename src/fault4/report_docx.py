@@ -165,10 +165,6 @@ def build_report(
     _para(doc, "Astana IT University | Fault Tolerance | Academic Year 2026–2027", italic=True)
     _para(doc, rc.CONTEXT_NOTE, italic=True, size=9)
 
-    doc.add_heading("Key terms in plain words", level=2)
-    _para(doc, rc.GLOSSARY_INTRO)
-    _table(doc, ("Term", "Meaning in plain words"), sorted(rc.GLOSSARY, key=lambda t: t[0].casefold()), (1.9, 4.6))
-
     doc.add_heading("Incident dataset (synthetic)", level=2)
     events = results["incident"]["events"]
     _table(doc, ("Time", "Event", "Source", "Severity"),
